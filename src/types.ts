@@ -1,3 +1,5 @@
+// GameConfig je tipizovan ugovor za pravila partije.
+
 export type Difficulty = "easy" | "normal" | "hard";
 
 export type GameConfig = {
@@ -12,7 +14,7 @@ export const defaultGameConfig: GameConfig = {
   gridWidth: 30,
   gridHeight: 30,
   startingSpeedMs: 150,
-  obstacleCount: 20,
+  obstacleCount: 70,
   difficulty: "normal",
 };
 
@@ -21,8 +23,11 @@ export type ValidationResult =
   | { ok: false; errors: string[] };
 
 const INITIAL_SNAKE_LENGTH = 3;
-const RESERVED_FOOD_CELLS = 2;
+const RESERVED_FOOD_CELLS = 1;
 
+/**
+ * Vraća stvarni interval tick-a za izabranu težinu.
+ */
 export function resolveStartingSpeedMs(config: GameConfig): number {
   const multiplier: Record<Difficulty, number> = {
     easy: 1.25,
@@ -33,6 +38,9 @@ export function resolveStartingSpeedMs(config: GameConfig): number {
   return Math.round(config.startingSpeedMs * multiplier[config.difficulty]);
 }
 
+/**
+ * Runtime validacija GameConfig-a.
+ */
 export function validateGameConfig(input: unknown): ValidationResult {
   const errors: string[] = [];
 

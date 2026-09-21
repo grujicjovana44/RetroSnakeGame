@@ -52,13 +52,21 @@ function isDifficulty(value: string | undefined): value is Difficulty {
 }
 
 function getHighScore(): number {
-  const saved = localStorage.getItem("snake_highscore");
-  return saved ? parseInt(saved, 10) || 0 : 0;
+  try {
+    const saved = localStorage.getItem("snake_highscore");
+    return saved ? parseInt(saved, 10) || 0 : 0;
+  } catch {
+    return 0;
+  }
 }
 
 function saveHighScore(score: number): void {
-  if (score > getHighScore()) {
-    localStorage.setItem("snake_highscore", String(score));
+  try {
+    if (score > getHighScore()) {
+      localStorage.setItem("snake_highscore", String(score));
+    }
+  } catch {
+    // Sprečava greške u okruženjima bez pristupa localStorage
   }
 }
 
@@ -328,9 +336,9 @@ function boot(): void {
 
   function selectDifficulty(difficulty: Difficulty): void {
     const obstacleMap: Record<Difficulty, number> = {
-      easy: 10,
-      normal: 20,
-      hard: 35,
+      easy: 30,
+      normal: 70,
+      hard: 90,
     };
 
     const configResult = validateGameConfig({

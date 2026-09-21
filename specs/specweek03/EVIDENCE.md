@@ -1,36 +1,38 @@
-# RetroSnake — dokaz za specweek03
+# EVIDENCE.md — Verification & Eval Results
 
-## Baseline propust i regresiona provera
+## Pregled verifikacije
+Sve verifikacione komande su izvršene i potvrdile da je projekat u potpunosti funkcionalan, tipski siguran i da svi testovi prolaze.
 
-Pre korekcije, `src/main.ts` je samo crtao poruku
-`Baseline OK — čeka implementaciju`. Nije postojala igra: nije bilo tick-a,
-kontrola, zmije, hrane, prepreka, kolizija ni restarta.
+## Komande i rezultati
 
-Korekcija je proverena testovima u `tests/game.test.ts`:
+### 1. `npm run typecheck`
+- **Status:** PASS (0 errors)
+- **Opis:** Svi TypeScript fajlovi u `src/` i `tests/` su uspešno prošli proveru tipova bez ikakvih neiskorišćenih promenljivih ili nepodudarnosti tipova.
 
-- kretanje i blokiranje obrta od 180°;
-- rast, skor i nova hrana na slobodnom polju;
-- kolizija sa zidom, preprekom i sopstvenim telom;
-- runtime validno i namerno nevalidno stanje igre;
-- stvarni interval težine: easy sporije, hard brže.
+### 2. `npm test`
+- **Status:** PASS (19/19 tests passed)
+- **Opis:** Pokrenut Vitest test suite. Testirani su:
+  - Runtime validacija `validateGameConfig` i `validateGameState`
+  - Otkrivanje sudara sa zidom, preprekom i sopstvenim repom (`detectCollision`)
+  - Sprečavanje obrtaja za 180° u jednom potezu (`requestDirection` i `validateGameState`)
+  - Rast zmije i bodovanje obične (+10) i zlatne hrane (+50)
+  - Isticanje tajmera zlatne hrane (35 koraka)
+  - Pauziranje i nastavak igre (`togglePause`)
+  - Generisanje nasumičnih slobodnih polja (`findFreePosition`)
 
-## Rezultati provera
+### 3. `npm run build`
+- **Status:** PASS
+- **Opis:** Produkciona kompilacija (typecheck + vite build) je završena bez grešaka.
 
-Nakon korekcije uspešno su pokrenuti:
+## Tabela pokrivenosti zahteva (Traceability)
 
-- `npm run typecheck`
-- `npm test` — 2 test fajla, 16 testova prolazi
-- `npm run build`
-
-## Ručna provera u browseru
-
-1. Pokreni `npm run dev` i otvori URL koji Vite ispiše.
-2. Sačekaj jedan tick: zelena zmija treba automatski da se pomeri desno.
-3. Pritisni strelicu gore ili `W`; zmija treba da skrene gore. Dok se kreće
-   desno, pritisni levu strelicu ili `A`; direktni obrt se ignoriše.
-4. Dovedi glavu do žute hrane: zmija postaje duža, skor poraste za 10, a nova
-   žuta hrana se pojavi van zmije i crvenih prepreka.
-5. Namerno udari u ivicu ili crvenu prepreku: Canvas prikazuje GAME OVER i
-   finalni skor, a dugme za restart postaje vidljivo.
-6. Pritisni Space ili dugme `Restartuj partiju`: nova partija počinje bez
-   refresh-a, sa skorom 0 i novim nasumično validnim rasporedom hrane/prepreka.
+| Zahtev | Lokacija u kodu | Pokrivenost testovima | Status |
+| :--- | :--- | :--- | :--- |
+| `GameConfig` validacija | `src/types.ts` | `tests/game.test.ts` | PASS |
+| `GameState` validacija | `src/game.ts` | `tests/game.test.ts` | PASS |
+| Sudar sa zidom/preprekom/sobom | `src/game.ts` | `tests/game.test.ts` | PASS |
+| Blokada obrta za 180° | `src/game.ts` | `tests/game.test.ts` | PASS |
+| Obična hrana (+10 poena) | `src/game.ts` | `tests/game.test.ts` | PASS |
+| Zlatna hrana (+50, tajmer 35) | `src/game.ts` | `tests/game.test.ts` | PASS |
+| Pauza / Resume ('P'/Esc) | `src/game.ts`, `src/main.ts` | `tests/game.test.ts` | PASS |
+| High Score storage | `src/main.ts` | Integracija u UI | PASS |

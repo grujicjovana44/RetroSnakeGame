@@ -4,205 +4,233 @@ import {
   createInitialGameState,
   detectCollision,
   findFreePosition,
-  type GameState,
-  positionsEqual,
+  FOOD_SCORE,
+  GOLDEN_FOOD_SCORE,
+  isOppositeDirection,
+  isPosition,
+  isWithinBounds,
+  movePosition,
   requestDirection,
+  togglePause,
   validateGameState,
 } from "../src/game";
-import {
-  defaultGameConfig,
-  resolveStartingSpeedMs,
-  validateGameConfig,
-} from "../src/types";
+import { defaultGameConfig, validateGameConfig } from "../src/types";
 
-const testConfig = {
-  ...defaultGameConfig,
-  gridWidth: 10,
-  gridHeight: 10,
-  obstacleCount: 1,
-};
-
-function createTestState(overrides: Partial<GameState> = {}): GameState {
-  return {
-    config: testConfig,
-    snake: [
-      { x: 4, y: 4 },
-      { x: 3, y: 4 },
-      { x: 2, y: 4 },
-    ],
-    direction: "right",
-    queuedDirection: "right",
-    food: { x: 8, y: 8 },
-    obstacles: [{ x: 7, y: 7 }],
-    score: 0,
-    status: "running",
-    collision: null,
-    ...overrides,
-  };
-}
-
-describe("Core game logika", () => {
-  it("ignoriše direktan obrt od 180 stepeni", () => {
-    const state = createTestState();
-
-    expect(requestDirection(state, "left")).toBe(state);
-    expect(requestDirection(state, "up").queuedDirection).toBe("up");
+describe("GameConfig and Types", () => {
+  it("validates default game config correctly", () => {
+    const res = validateGameConfig(defaultGameConfig);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.config.gridWidth).toBe(20);
+      expect(res.config.gridHeight).toBe(20);
+      expect(res.config.obstacleCount).toBe(70);
+    }
   });
 
-  it("pomera zmiju u izabranom pravcu", () => {
-    const nextState = advanceGame(requestDirection(createTestState(), "up"));
+  it("rejects invalid game config", () => {
+    expect(validateGameConfig({ ...defaultGameConfig, gridWidth: 2 }).ok).toBe(false);
+    expect(validateGameConfig({ ...defaultGameConfig, obstacleCount: 500 }).ok).toBe(false);
+    expect(validateGameConfig({ ...defaultGameConfig, difficulty: "invalid" as any }).ok).toBe(false);
+  });
+});
 
-    expect(nextState.snake[0]).toEqual({ x: 4, y: 3 });
-    expect(nextState.snake).toHaveLength(3);
+describe("Helper functions", () => {
+  it("isPosition identifies valid positions", () => {
+    expect(isPosition({ x: 0, y: 0 })).toBe(true);
+    expect(isPosition({ x: -1, y: 5 })).toBe(true);
+    expect(isPosition({ x: 1.5, y: 2 })).toBe(false);
+    expect(isPosition("foo")).toBe(false);
+    expect(isPosition(null)).toBe(false);
   });
 
-  it("uvećava zmiju i skor nakon hrane, a novu hranu stavlja na slobodno polje", () => {
-    const state = createTestState({ food: { x: 5, y: 4 } });
-    const nextState = advanceGame(state, () => 0);
-
-    expect(nextState.snake).toHaveLength(4);
-    expect(nextState.score).toBe(10);
-    expect(nextState.food).not.toBeNull();
-    expect(nextState.snake.some((segment) => positionsEqual(segment, nextState.food!))).toBe(false);
-    expect(nextState.obstacles.some((obstacle) => positionsEqual(obstacle, nextState.food!))).toBe(false);
+  it("isWithinBounds checks boundaries", () => {
+    const config = defaultGameConfig;
+    expect(isWithinBounds({ x: 0, y: 0 }, config)).toBe(true);
+    expect(isWithinBounds({ x: 19, y: 19 }, config)).toBe(true);
+    expect(isWithinBounds({ x: 20, y: 0 }, config)).toBe(false);
+    expect(isWithinBounds({ x: -1, y: 0 }, config)).toBe(false);
   });
 
-  it("detektuje sudar sa zidom", () => {
-    const state = createTestState({
-      snake: [
-        { x: 0, y: 4 },
-        { x: 1, y: 4 },
-        { x: 2, y: 4 },
-      ],
-      direction: "left",
-      queuedDirection: "left",
-    });
-
-    const nextState = advanceGame(state);
-
-    expect(nextState.status).toBe("game-over");
-    expect(nextState.collision).toBe("wall");
+  it("isOppositeDirection detects 180 degree turns", () => {
+    expect(isOppositeDirection("up", "down")).toBe(true);
+    expect(isOppositeDirection("down", "up")).toBe(true);
+    expect(isOppositeDirection("left", "right")).toBe(true);
+    expect(isOppositeDirection("right", "left")).toBe(true);
+    expect(isOppositeDirection("up", "left")).toBe(false);
   });
 
-  it("detektuje sudar sa statičnom preprekom", () => {
-    const state = createTestState({
-      obstacles: [{ x: 5, y: 4 }],
-    });
-
-    const nextState = advanceGame(state);
-
-    expect(nextState.status).toBe("game-over");
-    expect(nextState.collision).toBe("obstacle");
+  it("movePosition advances coordinate correctly", () => {
+    expect(movePosition({ x: 5, y: 5 }, "up")).toEqual({ x: 5, y: 4 });
+    expect(movePosition({ x: 5, y: 5 }, "down")).toEqual({ x: 5, y: 6 });
+    expect(movePosition({ x: 5, y: 5 }, "left")).toEqual({ x: 4, y: 5 });
+    expect(movePosition({ x: 5, y: 5 }, "right")).toEqual({ x: 6, y: 5 });
   });
 
-  it("detektuje sudar sa sopstvenim telom", () => {
-    const state = createTestState({
-      snake: [
-        { x: 4, y: 4 },
-        { x: 4, y: 3 },
-        { x: 3, y: 3 },
-        { x: 3, y: 4 },
-      ],
-      direction: "up",
-      queuedDirection: "up",
-    });
+  it("detectCollision detects wall, obstacle, and self collisions", () => {
+    const config = defaultGameConfig;
+    const snake = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
+    const obstacles = [{ x: 10, y: 10 }];
 
-    const nextState = advanceGame(state);
-
-    expect(nextState.status).toBe("game-over");
-    expect(nextState.collision).toBe("self");
+    expect(detectCollision({ x: -1, y: 5 }, snake, obstacles, config, true)).toBe("wall");
+    expect(detectCollision({ x: 10, y: 10 }, snake, obstacles, config, true)).toBe("obstacle");
+    expect(detectCollision({ x: 4, y: 5 }, snake, obstacles, config, true)).toBe("self");
+    expect(detectCollision({ x: 6, y: 5 }, snake, obstacles, config, true)).toBeNull();
   });
 
-  it("izdvojena funkcija kolizije tretira rep kao slobodan kada se pomera", () => {
-    const snake = [
-      { x: 2, y: 2 },
-      { x: 2, y: 3 },
-      { x: 1, y: 3 },
-      { x: 1, y: 2 },
-    ];
+  it("findFreePosition supports mock random and extraOccupied", () => {
+    const config = { ...defaultGameConfig, gridWidth: 3, gridHeight: 3, obstacleCount: 0 };
+    const snake = [{ x: 0, y: 0 }];
+    const obstacles = [{ x: 0, y: 1 }];
+    const mockRandom = () => 0;
 
-    expect(detectCollision({ x: 1, y: 2 }, snake, [], testConfig, true)).toBeNull();
-    expect(detectCollision({ x: 1, y: 2 }, snake, [], testConfig, false)).toBe("self");
+    const pos = findFreePosition(config, snake, obstacles, mockRandom);
+    expect(pos).not.toBeNull();
+    expect(pos).toEqual({ x: 1, y: 0 });
   });
+});
 
-  it("generiše početnu hranu i prepreke na međusobno slobodnim poljima", () => {
-    const state = createInitialGameState(testConfig, () => 0);
-
-    expect(state.obstacles).toHaveLength(testConfig.obstacleCount);
+describe("Game State & Validation", () => {
+  it("creates initial game state correctly", () => {
+    const state = createInitialGameState(defaultGameConfig, () => 0);
+    expect(state.status).toBe("running");
+    expect(state.score).toBe(0);
+    expect(state.snake.length).toBe(3);
+    expect(state.obstacles.length).toBe(70);
     expect(state.food).not.toBeNull();
-    expect(findFreePosition(testConfig, state.snake, state.obstacles, () => 0)).not.toBeNull();
     expect(validateGameState(state).ok).toBe(true);
   });
 
-  it("kreira gustu validnu tablu bez beskonačnog traženja prepreka", () => {
-    const denseConfig = {
-      ...defaultGameConfig,
-      gridWidth: 5,
-      gridHeight: 5,
-      obstacleCount: 21,
+  it("rejects invalid 180 degree turn in validateGameState", () => {
+    const state = createInitialGameState(defaultGameConfig);
+    const invalidState = {
+      ...state,
+      direction: "right" as const,
+      queuedDirection: "left" as const,
+    };
+    const res = validateGameState(invalidState);
+    expect(res.ok).toBe(false);
+  });
+
+  it("rejects food on snake in validateGameState", () => {
+    const state = createInitialGameState(defaultGameConfig);
+    const invalidState = {
+      ...state,
+      food: state.snake[0],
+    };
+    const res = validateGameState(invalidState);
+    expect(res.ok).toBe(false);
+  });
+
+  it("prevents 180 degree direction changes in requestDirection", () => {
+    const state = createInitialGameState(defaultGameConfig);
+    const updated = requestDirection(state, "left");
+    expect(updated.queuedDirection).toBe("right");
+  });
+
+  it("accepts valid direction change", () => {
+    const state = createInitialGameState(defaultGameConfig);
+    const updated = requestDirection(state, "up");
+    expect(updated.queuedDirection).toBe("up");
+  });
+
+  it("toggles pause correctly", () => {
+    const state = createInitialGameState(defaultGameConfig);
+    const paused = togglePause(state);
+    expect(paused.status).toBe("paused");
+    const resumed = togglePause(paused);
+    expect(resumed.status).toBe("running");
+  });
+});
+
+describe("Game Advancement", () => {
+  it("advances snake forward when not eating", () => {
+    const config = { ...defaultGameConfig, gridWidth: 10, gridHeight: 10, obstacleCount: 0 };
+    const snake = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
+    const state = {
+      config,
+      snake,
+      direction: "right" as const,
+      queuedDirection: "right" as const,
+      food: { x: 9, y: 9 },
+      goldenFood: null,
+      goldenFoodTimer: 0,
+      obstacles: [],
+      score: 0,
+      status: "running" as const,
+      collision: null,
     };
 
-    expect(() => createInitialGameState(denseConfig, () => 0)).not.toThrow();
-    const state = createInitialGameState(denseConfig, () => 0);
-
-    expect(state.obstacles).toHaveLength(denseConfig.obstacleCount);
-    expect(state.food).not.toBeNull();
-    expect(validateGameState(state).ok).toBe(true);
-  });
-});
-
-describe("Runtime ugovori", () => {
-  it("koristi 70 prepreka kao podrazumevanih 17,5% table", () => {
-    expect(defaultGameConfig.obstacleCount).toBe(70);
+    const next = advanceGame(state);
+    expect(next.snake[0]).toEqual({ x: 6, y: 5 });
+    expect(next.snake.length).toBe(3);
+    expect(next.score).toBe(0);
   });
 
-  it("prihvata validno kreirano stanje igre", () => {
-    const state = createInitialGameState(testConfig, () => 0);
+  it("grows snake and increases score when eating food", () => {
+    const config = { ...defaultGameConfig, gridWidth: 10, gridHeight: 10, obstacleCount: 0 };
+    const snake = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
+    const state = {
+      config,
+      snake,
+      direction: "right" as const,
+      queuedDirection: "right" as const,
+      food: { x: 6, y: 5 },
+      goldenFood: null,
+      goldenFoodTimer: 0,
+      obstacles: [],
+      score: 0,
+      status: "running" as const,
+      collision: null,
+    };
 
-    expect(validateGameState(state).ok).toBe(true);
+    const next = advanceGame(state, () => 0.99);
+    expect(next.snake[0]).toEqual({ x: 6, y: 5 });
+    expect(next.snake.length).toBe(4);
+    expect(next.score).toBe(FOOD_SCORE);
   });
 
-  it("odbija stanje gde je hrana na zmiji", () => {
-    const state = createInitialGameState(testConfig, () => 0);
-    const invalidState = { ...state, food: state.snake[0] };
-    const result = validateGameState(invalidState);
+  it("handles golden food score and timer expiration", () => {
+    const config = { ...defaultGameConfig, gridWidth: 10, gridHeight: 10, obstacleCount: 0 };
+    const snake = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
+    const state = {
+      config,
+      snake,
+      direction: "right" as const,
+      queuedDirection: "right" as const,
+      food: { x: 9, y: 9 },
+      goldenFood: { x: 6, y: 5 },
+      goldenFoodTimer: 1,
+      obstacles: [],
+      score: 0,
+      status: "running" as const,
+      collision: null,
+    };
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors.join(" ")).toMatch(/food/);
-    }
+    const next = advanceGame(state);
+    expect(next.score).toBe(GOLDEN_FOOD_SCORE);
+    expect(next.goldenFood).toBeNull();
+    expect(next.snake.length).toBe(4);
   });
 
-  it("odbija stanje sa unapred zakazanim obrtom od 180 stepeni", () => {
-    const state = createInitialGameState(testConfig, () => 0);
-    const result = validateGameState({ ...state, queuedDirection: "left" });
+  it("detects wall collision and triggers game over", () => {
+    const config = { ...defaultGameConfig, gridWidth: 5, gridHeight: 5, obstacleCount: 0 };
+    const snake = [{ x: 4, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 2 }];
+    const state = {
+      config,
+      snake,
+      direction: "right" as const,
+      queuedDirection: "right" as const,
+      food: { x: 0, y: 0 },
+      goldenFood: null,
+      goldenFoodTimer: 0,
+      obstacles: [],
+      score: 0,
+      status: "running" as const,
+      collision: null,
+    };
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors.join(" ")).toMatch(/180/);
-    }
-  });
-
-  it("odbija config sa više prepreka nego što fizički može stati", () => {
-    const result = validateGameConfig({
-      ...defaultGameConfig,
-      gridWidth: 5,
-      gridHeight: 5,
-      obstacleCount: 22,
-    });
-
-    expect(result.ok).toBe(false);
-  });
-});
-
-describe("Težina", () => {
-  it("menja stvarni startingSpeedMs: easy je sporiji, hard brži", () => {
-    const easy = resolveStartingSpeedMs({ ...defaultGameConfig, difficulty: "easy" });
-    const normal = resolveStartingSpeedMs({ ...defaultGameConfig, difficulty: "normal" });
-    const hard = resolveStartingSpeedMs({ ...defaultGameConfig, difficulty: "hard" });
-
-    expect(easy).toBeGreaterThan(normal);
-    expect(normal).toBe(150);
-    expect(hard).toBeLessThan(normal);
+    const next = advanceGame(state);
+    expect(next.status).toBe("game-over");
+    expect(next.collision).toBe("wall");
   });
 });

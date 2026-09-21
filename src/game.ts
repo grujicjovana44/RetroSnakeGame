@@ -2,7 +2,7 @@ import { type GameConfig, validateGameConfig } from "./types";
 
 export const FOOD_SCORE = 10;
 export const GOLDEN_FOOD_SCORE = 50;
-export const GOLDEN_FOOD_DURATION = 35; // Trajanje zlatne hrane u broju koraka
+export const GOLDEN_FOOD_DURATION = 35; // Trajanje u broju koraka
 
 export type Position = {
   x: number;
@@ -21,8 +21,8 @@ export type GameState = {
   direction: Direction;
   queuedDirection: Direction;
   food: Position | null;
-  goldenFood: Position | null;
-  goldenFoodTimer: number;
+  goldenFood?: Position | null;
+  goldenFoodTimer?: number;
   obstacles: Position[];
   score: number;
   status: GameStatus;
@@ -52,7 +52,7 @@ function isCollision(value: unknown): value is Collision {
   return value === "wall" || value === "obstacle" || value === "self";
 }
 
-function isPosition(value: unknown): value is Position {
+export function isPosition(value: unknown): value is Position {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -88,15 +88,6 @@ export function movePosition(position: Position, direction: Direction): Position
   return { x: position.x + vector.x, y: position.y + vector.y };
 }
 
-/** Prebacuje zmiju na suprotnu stranu ako dodirne ivicu (prolazak kroz zid) */
-export function wrapPosition(position: Position, config: GameConfig): Position {
-  let x = position.x % config.gridWidth;
-  let y = position.y % config.gridHeight;
-  if (x < 0) x += config.gridWidth;
-  if (y < 0) y += config.gridHeight;
-  return { x, y };
-}
-
 export function detectCollision(
   nextHead: Position,
   snake: Position[],
@@ -104,7 +95,10 @@ export function detectCollision(
   config: GameConfig,
   tailWillMove: boolean,
 ): Collision | null {
-  // Zid više ne ubija zmiju već ona prolazi kroz njega (wrapPosition)
+  if (!isWithinBounds(nextHead, config)) {
+    return "wall";
+  }
+
   if (obstacles.some((obstacle) => positionsEqual(nextHead, obstacle))) {
     return "obstacle";
   }
@@ -174,9 +168,18 @@ export function findFreePosition(
   config: GameConfig,
   snake: Position[],
   obstacles: Position[],
-  extraOccupied: (Position | null)[] = [],
-  random: () => number = Math.random,
+  extraOccupiedOrRandom: (Position | null)[] | (() => number) = [],
+  randomFn: () => number = Math.random,
 ): Position | null {
+  let extraOccupied: (Position | null)[] = [];
+  let random = randomFn;
+
+  if (typeof extraOccupiedOrRandom === "function") {
+    random = extraOccupiedOrRandom;
+  } else if (Array.isArray(extraOccupiedOrRandom)) {
+    extraOccupied = extraOccupiedOrRandom;
+  }
+
   const freePositions = listFreePositions(config, snake, obstacles, extraOccupied);
 
   if (freePositions.length === 0) {
@@ -258,11 +261,9 @@ export function advanceGame(
     return state;
   }
 
-  const movedHead = movePosition(state.snake[0], state.queuedDirection);
-  const nextHead = wrapPosition(movedHead, state.config); // Teleportacija pri prelazu ivice
-
+  const nextHead = movePosition(state.snake[0], state.queuedDirection);
   const eatsFood = state.food !== null && positionsEqual(nextHead, state.food);
-  const eatsGolden = state.goldenFood !== null && positionsEqual(nextHead, state.goldenFood);
+  const eatsGolden = state.goldenFood !== null && state.goldenFood !== undefined && positionsEqual(nextHead, state.goldenFood);
 
   const collision = detectCollision(
     nextHead,
@@ -287,14 +288,13 @@ export function advanceGame(
 
   let score = state.score;
   let food = state.food;
-  let goldenFood = state.goldenFood;
-  let goldenFoodTimer = state.goldenFoodTimer;
+  let goldenFood = state.goldenFood ?? null;
+  let goldenFoodTimer = state.goldenFoodTimer ?? 0;
 
   if (eatsFood) {
     score += FOOD_SCORE;
     food = findFreePosition(state.config, snake, state.obstacles, [goldenFood], random);
 
-    // 25% šanse da se stvori zlatna hrana
     if (!goldenFood && random() < 0.25) {
       goldenFood = findFreePosition(state.config, snake, state.obstacles, [food], random);
       goldenFoodTimer = GOLDEN_FOOD_DURATION;
@@ -379,6 +379,68 @@ export function validateGameState(input: unknown): GameStateValidationResult {
   }
 
   if (!configResult.ok || !Array.isArray(state.snake) || !Array.isArray(state.obstacles)) {
+    return { ok: false, errors };
+  }
+
+  const config = configResult.config;
+  const snake = state.snake;
+  const obstacles = state.obstacles;
+  const food = state.food;
+  const goldenFood = state.goldenFood;
+  const goldenFoodTimer = state.goldenFoodTimer;
+
+  if (obstacles.length !== config.obstacleCount) {
+    errors.push("broj prepreka ne odgovara config.obstacleCount");
+  }
+  if (snake.some((position) => !isPosition(position) || !isWithinBounds(position, config))) {
+    errors.push("snake sadrži nevažeću ili poziciju van table");
+  }
+  if (obstacles.some((position) => !isPosition(position) || !isWithinBounds(position, config))) {
+    errors.push("obstacles sadrži nevažeću ili poziciju van table");
+  }
+
+  const allBoardPositions = [...snake, ...obstacles];
+  if (new Set(allBoardPositions.map(positionKey)).size !== allBoardPositions.length) {
+    errors.push("zmija i prepreke ne smeju se preklapati niti imati duplikate");
+  }
+
+  if (food === undefined) {
+    errors.push("food mora biti null ili važeća pozicija na tabli");
+  } else if (
+    food !== null &&
+    (!isPosition(food) || !isWithinBounds(food, config))
+  ) {
+    errors.push("food mora biti null ili važeća pozicija na tabli");
+  }
+
+  if (
+    food !== null &&
+    food !== undefined &&
+    isPosition(food) &&
+    allBoardPositions.some((position) => positionsEqual(position, food))
+  ) {
+    errors.push("food ne sme biti na zmiji ili prepreci");
+  }
+
+  if (food === null && allBoardPositions.length < config.gridWidth * config.gridHeight) {
+    errors.push("food može biti null samo kada nema slobodnih polja");
+  }
+
+  if (goldenFood !== undefined && goldenFood !== null) {
+    if (!isPosition(goldenFood) || !isWithinBounds(goldenFood, config)) {
+      errors.push("goldenFood mora biti validna pozicija na tabli");
+    } else if (allBoardPositions.some((position) => positionsEqual(position, goldenFood))) {
+      errors.push("goldenFood ne sme biti na zmiji ili prepreci");
+    } else if (food !== null && food !== undefined && positionsEqual(food, goldenFood)) {
+      errors.push("goldenFood ne sme biti na običnoj hrani");
+    }
+  }
+
+  if (goldenFoodTimer !== undefined && (!Number.isInteger(goldenFoodTimer) || goldenFoodTimer < 0)) {
+    errors.push("goldenFoodTimer mora biti nenegativan ceo broj");
+  }
+
+  if (errors.length > 0) {
     return { ok: false, errors };
   }
 
