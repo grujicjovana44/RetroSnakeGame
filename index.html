@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="sr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RetroSnake: Prepreke</title>
+    <style>
+      body {
+        background: #0d0f12;
+        color: #e6e6e6;
+        font-family: 'Courier New', monospace;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding-top: 32px;
+      }
+      canvas {
+        background: #111417;
+        border: 2px solid #3a3f47;
+        image-rendering: pixelated;
+      }
+      #hud {
+        display: flex;
+        gap: 24px;
+        font-size: 18px;
+      }
+      #difficulty-controls {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+      }
+      #difficulty-controls span {
+        color: #b8c2cc;
+        font-size: 14px;
+        margin-right: 4px;
+      }
+      button {
+        background: #29323b;
+        border: 2px solid #4e9d67;
+        color: #e6e6e6;
+        cursor: pointer;
+        font: bold 16px 'Courier New', monospace;
+        padding: 8px 14px;
+      }
+      button:hover {
+        border-color: #f3c969;
+      }
+      button[aria-pressed="true"] {
+        background: #8fd694;
+        color: #111417;
+      }
+      #restart {
+        background: #8fd694;
+        color: #111417;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>RetroSnake: Prepreke</h1>
+    <div id="hud">
+      <span id="score">Skor: 0</span>
+      <span id="status">Status: spremno</span>
+    </div>
+    <div id="difficulty-controls" aria-label="Izbor brzine za sledeću partiju">
+      <span>Brzina za sledeću partiju:</span>
+      <button type="button" data-difficulty="easy" aria-pressed="false">Sporo</button>
+      <button type="button" data-difficulty="normal" aria-pressed="true">Normalno</button>
+      <button type="button" data-difficulty="hard" aria-pressed="false">Brzo</button>
+    </div>
+    <canvas id="game" width="400" height="400"></canvas>
+    <button id="restart" type="button" hidden>Restartuj partiju</button>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
