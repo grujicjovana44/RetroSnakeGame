@@ -1,17 +1,47 @@
 # PLAN.md — SpecWeek03 Implementation Plan
 
-## Pregled
-Cilj ovog plana je implementacija stabilne, tipizirane i testirane verzije igre RetroSnake sa preprekama.
+## Scope
+
+Ovaj plan pokriva Week 3 / Session 003. Session 004 funkcionalnosti, AI Hint
+i tool calling nisu deo ovog rada.
+
+## Source of truth
+
+`docs/GAME_SPEC.md` je autoritativni dokument za gameplay pravila i scope.
+
+Ključne vrednosti koje moraju ostati usklađene sa kodom su:
+
+- grid: `30 × 30`;
+- Easy: `30` prepreka;
+- Normal: `70` prepreka;
+- Hard: `90` prepreka;
+- prelazak preko ivice table koristi wrap-around;
+- sudar sa preprekom ili sopstvenim telom završava igru.
 
 ## Arhitektura i moduli
-1. **`src/types.ts`**: Tipovi i runtime validacija za `GameConfig` (grid 20×20, 70 prepreka, difficulty).
-2. **`src/game.ts`**: Domenska logika (zmija, kolizije, hrana, zlatna hrana, pauziranje, `advanceGame`, `validateGameState`).
-3. **`src/main.ts`**: Canvas UI, event handler-i za tastaturu ('P'/Esc pauza, strelice/WASD, Space), prikazi skora i Game Over.
-4. **`tests/game.test.ts`**: Vitest jedinici i integracioni testovi za sve funkcije.
 
-## Faze implementacije
-- **Faza 1:** Povezivanje tipova i ugovora (`GameConfig`, `defaultGameConfig`).
-- **Faza 2:** Domenska logika i otkrivanje kolizija (`detectCollision`, `advanceGame`).
-- **Faza 3:** Zlatna hrana (+50, 35 koraka, 25% šanse), pauza i High Score storage.
-- **Faza 4:** UI renderovanje (Canvas 2D, oči na glavi zmije, overlays).
-- **Faza 5:** Verifikacija (`npm run typecheck`, `npm test`, `npm run build`).
+1. `src/types.ts` — tipovi, podrazumevani `GameConfig` i runtime validacija.
+2. `src/game.ts` — kretanje, wrap-around, sudari, hrana, stanje i pauza.
+3. `src/main.ts` — Canvas UI, input, game loop, restart i High Score.
+4. `tests/` — unit i integracioni testovi za domensku logiku i konfiguraciju.
+
+## Implementacione faze
+
+- [x] Faza 1: `GameConfig` ugovor i runtime validacija.
+- [x] Faza 2: domenska logika, sudari i wrap-around.
+- [x] Faza 3: obična/zlatna hrana, pauza i High Score UI.
+- [x] Faza 4: Canvas renderovanje i status overlays.
+- [x] Faza 5: automated verification.
+- [ ] Faza 6: browser evidence za ponašanja zavisna od runtime-a.
+
+## Verification
+
+Pre završetka proveriti:
+
+```text
+npm run typecheck
+npm test
+npm run build
+```
+
+Rezultati i preostala ograničenja vode se u `EVIDENCE.md`.

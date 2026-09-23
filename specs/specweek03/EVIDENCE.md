@@ -1,57 +1,58 @@
-# EVIDENCE.md — Verification & Eval Results
+# EVIDENCE.md — Week 3 / Session 003
 
-## Pregled verifikacije
-Sve verifikacione komande su izvršene i potvrdile da je projekat u potpunosti funkcionalan, tipski siguran i da svi testovi prolaze.
+## Scope
 
-## Komande i rezultati
+Ova evidence pokriva Session 003. Session 004, AI Hint i tool calling nisu deo
+ove predaje.
 
-### 1. `npm run typecheck`
-- **Status:** PASS (0 errors)
-- **Opis:** Svi TypeScript fajlovi u `src/` i `tests/` su uspešno prošli proveru tipova bez ikakvih neiskorišćenih promenljivih ili nepodudarnosti tipova.
+## Automated verification
 
-### 2. `npm test`
-- **Status:** PASS (19/19 tests passed)
-- **Opis:** Pokrenut Vitest test suite. Testirani su:
-  - Runtime validacija `validateGameConfig` i `validateGameState`
-  - Otkrivanje sudara sa zidom, preprekom i sopstvenim repom (`detectCollision`)
-  - Sprečavanje obrtaja za 180° u jednom potezu (`requestDirection` i `validateGameState`)
-  - Rast zmije i bodovanje obične (+10) i zlatne hrane (+50)
-  - Isticanje tajmera zlatne hrane (35 koraka)
-  - Pauziranje i nastavak igre (`togglePause`)
-  - Generisanje nasumičnih slobodnih polja (`findFreePosition`)
+| Komanda | Rezultat |
+| --- | --- |
+| `npm run typecheck` | PASS |
+| `npm test` | PASS — 45 tests |
+| `npm run build` | PASS |
 
-### 3. `npm run build`
-- **Status:** PASS
-- **Opis:** Produkciona kompilacija (typecheck + vite build) je završena bez grešaka.
+Automated testovi pokrivaju movement, direction validation, 180° restriction,
+wrap-around preko sve četiri ivice, prepreke, self collision, food, golden food,
+pause, state validation i config validation.
 
-### Dependency Security Audit
+## Traceability
 
-`npm audit` was executed after the Week 3 implementation.
+| Zahtev | Implementacija | Test/dokaz | Status |
+| --- | --- | --- | --- |
+| Grid 30×30 i difficulty 30/70/90 | `src/types.ts`, `src/main.ts` | `tests/gameConfig.test.ts` | PASS |
+| Movement i 180° restriction | `src/game.ts` | `tests/game.test.ts` | PASS |
+| Wrap-around | `wrapPosition`, `advanceGame` | četiri boundary testa | PASS |
+| Obstacle collision | `src/game.ts` | `tests/game.test.ts` | PASS |
+| Self collision | `src/game.ts` | `tests/game.test.ts` | PASS |
+| Food/golden food | `advanceGame` | `tests/game.test.ts` | PASS |
+| Pause/resume | `togglePause`, `src/main.ts` | unit test + browser check | PASS |
+| Game Over/restart | `advanceGame`, `src/main.ts` | unit test + browser check | PASS |
+| Runtime validation | `validateGameConfig`, `validateGameState` | validation tests | PASS |
+| High Score persistence | `src/main.ts` | browser check | PASS |
 
-The current dependency tree contains 5 reported vulnerabilities:
+## Browser evidence
 
-* 3 moderate
-* 1 high
-* 1 critical
+Ove stavke ostaju otvorene dok ne budu proverene u browseru i dokumentovane
+screenshotom ili drugim jasnim runtime dokazom:
 
-The affected development/test dependency chain includes `vitest@2.1.9`, `@vitest/mocker@2.1.9`, `vite@5.4.21`, and `esbuild@0.21.5`.
+| ID | Scenario | Status |
+| --- | --- | --- |
+| EVID-01 | Initial game / Canvas / HUD | PASS |
+| EVID-02 | Wrap-around | PASS |
+| EVID-03 | Game Over overlay | PASS |
+| EVID-04 | Pause/resume overlay | PASS |
+| EVID-05 | Restart bez reload-a | PASS |
+| EVID-06 | High Score posle refresh-a | PASS |
 
-Running `npm audit fix` without force does not resolve the remaining findings. npm reports that resolving them automatically would require breaking-version upgrades, including `vitest@5.0.1` and `vite@8.3.0`.
+## Known limitations
 
-The breaking upgrade was not applied during the Week 3 submission because it could introduce unverified changes to the existing test and build setup.
+Unit testovi ne predstavljaju zamenu za browser proveru Canvas renderovanja,
+keyboard input-a, DOM overlay-a, game loop-a i `localStorage` persistence-a.
 
-This is recorded as a known dependency-maintenance limitation for a future update.
+## Dependency note
 
-
-## Tabela pokrivenosti zahteva (Traceability)
-
-| Zahtev | Lokacija u kodu | Pokrivenost testovima | Status |
-| :--- | :--- | :--- | :--- |
-| `GameConfig` validacija | `src/types.ts` | `tests/game.test.ts` | PASS |
-| `GameState` validacija | `src/game.ts` | `tests/game.test.ts` | PASS |
-| Sudar sa zidom/preprekom/sobom | `src/game.ts` | `tests/game.test.ts` | PASS |
-| Blokada obrta za 180° | `src/game.ts` | `tests/game.test.ts` | PASS |
-| Obična hrana (+10 poena) | `src/game.ts` | `tests/game.test.ts` | PASS |
-| Zlatna hrana (+50, tajmer 35) | `src/game.ts` | `tests/game.test.ts` | PASS |
-| Pauza / Resume ('P'/Esc) | `src/game.ts`, `src/main.ts` | `tests/game.test.ts` | PASS |
-| High Score storage | `src/main.ts` | Integracija u UI | PASS |
+Dependency tree sadrži ranije evidentirane razvojne/test vulnerabilnosti. Nije
+pokretan breaking upgrade niti `npm audit fix --force`, u skladu sa pravilima
+repozitorijuma.

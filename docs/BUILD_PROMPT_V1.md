@@ -70,7 +70,8 @@ Kopirano iz `GAME_SPEC.md` — implementacija se smatra završenom tek kada su
 - `index.html` — samo ako je zaista neophodno (npr. dodatni DOM element za
   HUD); ne menjaj build/script tagove bez razloga.
 - `docs/GAME_SPEC.md`, `docs/CONTEXT_MANIFEST.md`, `docs/EVALS.md`,
-  `docs/EVIDENCE_003.md`, `docs/AI_USAGE_LOG.md` — možeš predložiti izmene,
+  `specs/specweek03/EVIDENCE.md`,
+  možeš predložiti izmene,
   ali ja potvrđujem sadržaj pre commit-a.
 - `package.json` — ne diraj bez eksplicitnog odobrenja (skripte `dev`,
   `build`, `typecheck`, `test` već postoje i treba da ostanu stabilne).

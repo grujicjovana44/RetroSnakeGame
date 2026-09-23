@@ -39,7 +39,7 @@ npm test
 Result:
 
 ```text
-25 tests passed
+45 tests passed
 ```
 
 Testovi pokrivaju:
@@ -87,9 +87,7 @@ Na ivici table:
         ↓
 {x:5,y:2}
         ↓
-wall collision
-        ↓
-game-over
+wrap-around preko ivice
 ```
 
 ## Hypothesis

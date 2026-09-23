@@ -40,7 +40,7 @@ Obstacles are procedurally generated to add variety and prevent repetitive gamep
 
 The game detects:
 
-* 🧱 collision with walls and grid boundaries
+* 🌀 wrap-around preko ivica table
 * 🪨 collision with obstacles
 * 🐍 collision with the snake's own body
 

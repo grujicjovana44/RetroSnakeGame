@@ -5,6 +5,10 @@ describe("validateGameConfig — baseline runtime provera", () => {
   it("prihvata validan, podrazumevani config", () => {
     const result = validateGameConfig(defaultGameConfig);
     expect(result.ok).toBe(true);
+    expect(defaultGameConfig.gridWidth).toBe(30);
+    expect(defaultGameConfig.gridHeight).toBe(30);
+    expect(defaultGameConfig.obstacleCount).toBe(70);
+    expect(defaultGameConfig.difficulty).toBe("normal");
   });
 
   it("odbija config sa gridWidth van opsega", () => {

@@ -18,6 +18,13 @@ Tok rada treba da prati:
 
 `GAME_SPEC.md` → implementacija → testovi → evaluacija → evidence
 
+Za pun SpecKit lifecycle koristi lokalne skills u `.agents/skills/` redom:
+
+`analyze → checklist → clarify → constitution → converge → specify → plan → tasks → implement → tasks-to-issues`
+
+`specs/CONSTITUTION.md` definiše projektne principe, a `specs/specweek03/`
+sadrži session-specific specifikaciju, plan, taskove i evidence.
+
 Ako implementacija odstupa od specifikacije:
 
 * ne menjaj specifikaciju ili implementaciju prećutno;
@@ -62,7 +69,7 @@ npm run build
 * `docs/BUILD_PROMPT_V1.md` — implementacioni prompt korišćen za Session 003
 * `docs/CONTEXT_MANIFEST.md` — dokumentuje kontekst koji je coding agent dobio tokom Session 003
 * `docs/EVALS.md` — evaluacioni slučajevi i očekivani rezultati
-* `docs/EVIDENCE.md` — dokumentovani rezultati testiranja i verifikacije
+* `specs/specweek03/EVIDENCE.md` — dokumentovani rezultati testiranja i verifikacije
 
 
 ## Dependency policy
