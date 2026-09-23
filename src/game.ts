@@ -45,7 +45,12 @@ function positionKey(position: Position): string {
 }
 
 function isDirection(value: unknown): value is Direction {
-  return value === "up" || value === "down" || value === "left" || value === "right";
+  return (
+    value === "up" ||
+    value === "down" ||
+    value === "left" ||
+    value === "right"
+  );
 }
 
 function isCollision(value: unknown): value is Collision {
@@ -65,7 +70,10 @@ export function positionsEqual(a: Position, b: Position): boolean {
   return a.x === b.x && a.y === b.y;
 }
 
-export function isWithinBounds(position: Position, config: GameConfig): boolean {
+export function isWithinBounds(
+  position: Position,
+  config: GameConfig
+): boolean {
   return (
     position.x >= 0 &&
     position.x < config.gridWidth &&
@@ -74,7 +82,10 @@ export function isWithinBounds(position: Position, config: GameConfig): boolean 
   );
 }
 
-export function isOppositeDirection(a: Direction, b: Direction): boolean {
+export function isOppositeDirection(
+  a: Direction,
+  b: Direction
+): boolean {
   return (
     (a === "up" && b === "down") ||
     (a === "down" && b === "up") ||
@@ -83,9 +94,31 @@ export function isOppositeDirection(a: Direction, b: Direction): boolean {
   );
 }
 
-export function movePosition(position: Position, direction: Direction): Position {
+export function movePosition(
+  position: Position,
+  direction: Direction
+): Position {
   const vector = DIRECTION_VECTORS[direction];
-  return { x: position.x + vector.x, y: position.y + vector.y };
+
+  return {
+    x: position.x + vector.x,
+    y: position.y + vector.y,
+  };
+}
+
+export function wrapPosition(
+  position: Position,
+  config: GameConfig
+): Position {
+  return {
+    x:
+      ((position.x % config.gridWidth) + config.gridWidth) %
+      config.gridWidth,
+
+    y:
+      ((position.y % config.gridHeight) + config.gridHeight) %
+      config.gridHeight,
+  };
 }
 
 export function detectCollision(
@@ -93,39 +126,67 @@ export function detectCollision(
   snake: Position[],
   obstacles: Position[],
   config: GameConfig,
-  tailWillMove: boolean,
+  tailWillMove: boolean
 ): Collision | null {
   if (!isWithinBounds(nextHead, config)) {
     return "wall";
   }
 
-  if (obstacles.some((obstacle) => positionsEqual(nextHead, obstacle))) {
+  if (
+    obstacles.some((obstacle) =>
+      positionsEqual(nextHead, obstacle)
+    )
+  ) {
     return "obstacle";
   }
 
-  const snakeToCheck = tailWillMove ? snake.slice(0, -1) : snake;
-  if (snakeToCheck.some((segment) => positionsEqual(nextHead, segment))) {
+  const snakeToCheck = tailWillMove
+    ? snake.slice(0, -1)
+    : snake;
+
+  if (
+    snakeToCheck.some((segment) =>
+      positionsEqual(nextHead, segment)
+    )
+  ) {
     return "self";
   }
 
   return null;
 }
 
-export function requestDirection(state: GameState, direction: Direction): GameState {
-  if (state.status !== "running" || isOppositeDirection(state.direction, direction)) {
+export function requestDirection(
+  state: GameState,
+  direction: Direction
+): GameState {
+  if (
+    state.status !== "running" ||
+    isOppositeDirection(state.direction, direction)
+  ) {
     return state;
   }
 
-  return { ...state, queuedDirection: direction };
+  return {
+    ...state,
+    queuedDirection: direction,
+  };
 }
 
 export function togglePause(state: GameState): GameState {
   if (state.status === "running") {
-    return { ...state, status: "paused" };
+    return {
+      ...state,
+      status: "paused",
+    };
   }
+
   if (state.status === "paused") {
-    return { ...state, status: "running" };
+    return {
+      ...state,
+      status: "running",
+    };
   }
+
   return state;
 }
 
@@ -133,19 +194,23 @@ function listFreePositions(
   config: GameConfig,
   snake: Position[],
   obstacles: Position[],
-  extraOccupied: (Position | null)[] = [],
+  extraOccupied: (Position | null)[] = []
 ): Position[] {
   const occupiedList = [
     ...snake.map(positionKey),
     ...obstacles.map(positionKey),
-    ...extraOccupied.filter((p): p is Position => p !== null).map(positionKey),
+    ...extraOccupied
+      .filter((p): p is Position => p !== null)
+      .map(positionKey),
   ];
+
   const occupied = new Set(occupiedList);
   const freePositions: Position[] = [];
 
   for (let y = 0; y < config.gridHeight; y += 1) {
     for (let x = 0; x < config.gridWidth; x += 1) {
       const position = { x, y };
+
       if (!occupied.has(positionKey(position))) {
         freePositions.push(position);
       }
@@ -155,21 +220,30 @@ function listFreePositions(
   return freePositions;
 }
 
-function pickRandomIndex(length: number, random: () => number): number {
+function pickRandomIndex(
+  length: number,
+  random: () => number
+): number {
   const value = random();
+
   if (!Number.isFinite(value)) {
     return 0;
   }
 
-  return Math.max(0, Math.min(length - 1, Math.floor(value * length)));
+  return Math.max(
+    0,
+    Math.min(length - 1, Math.floor(value * length))
+  );
 }
 
 export function findFreePosition(
   config: GameConfig,
   snake: Position[],
   obstacles: Position[],
-  extraOccupiedOrRandom: (Position | null)[] | (() => number) = [],
-  randomFn: () => number = Math.random,
+  extraOccupiedOrRandom:
+    | (Position | null)[]
+    | (() => number) = [],
+  randomFn: () => number = Math.random
 ): Position | null {
   let extraOccupied: (Position | null)[] = [];
   let random = randomFn;
@@ -180,16 +254,25 @@ export function findFreePosition(
     extraOccupied = extraOccupiedOrRandom;
   }
 
-  const freePositions = listFreePositions(config, snake, obstacles, extraOccupied);
+  const freePositions = listFreePositions(
+    config,
+    snake,
+    obstacles,
+    extraOccupied
+  );
 
   if (freePositions.length === 0) {
     return null;
   }
 
-  return freePositions[pickRandomIndex(freePositions.length, random)];
+  return freePositions[
+    pickRandomIndex(freePositions.length, random)
+  ];
 }
 
-function createStartingSnake(config: GameConfig): Position[] {
+function createStartingSnake(
+  config: GameConfig
+): Position[] {
   const headX = Math.floor(config.gridWidth / 2);
   const headY = Math.floor(config.gridHeight / 2);
 
@@ -203,18 +286,38 @@ function createStartingSnake(config: GameConfig): Position[] {
 function createObstacles(
   config: GameConfig,
   snake: Position[],
-  random: () => number,
+  random: () => number
 ): Position[] {
-  const availablePositions = listFreePositions(config, snake, []);
-  if (config.obstacleCount > availablePositions.length) {
-    throw new Error("Nema dovoljno slobodnih polja za prepreke.");
+  const availablePositions = listFreePositions(
+    config,
+    snake,
+    []
+  );
+
+  if (
+    config.obstacleCount >
+    availablePositions.length
+  ) {
+    throw new Error(
+      "Nema dovoljno slobodnih polja za prepreke."
+    );
   }
 
   const obstacles: Position[] = [];
 
-  for (let index = 0; index < config.obstacleCount; index += 1) {
-    const positionIndex = pickRandomIndex(availablePositions.length, random);
-    const [nextObstacle] = availablePositions.splice(positionIndex, 1);
+  for (
+    let index = 0;
+    index < config.obstacleCount;
+    index += 1
+  ) {
+    const positionIndex = pickRandomIndex(
+      availablePositions.length,
+      random
+    );
+
+    const [nextObstacle] =
+      availablePositions.splice(positionIndex, 1);
+
     obstacles.push(nextObstacle);
   }
 
@@ -223,19 +326,38 @@ function createObstacles(
 
 export function createInitialGameState(
   config: GameConfig,
-  random: () => number = Math.random,
+  random: () => number = Math.random
 ): GameState {
   const configResult = validateGameConfig(config);
+
   if (!configResult.ok) {
-    throw new Error(`Nevalidan GameConfig: ${configResult.errors.join("; ")}`);
+    throw new Error(
+      `Nevalidan GameConfig: ${configResult.errors.join("; ")}`
+    );
   }
 
-  const snake = createStartingSnake(configResult.config);
-  const obstacles = createObstacles(configResult.config, snake, random);
-  const food = findFreePosition(configResult.config, snake, obstacles, [], random);
+  const snake = createStartingSnake(
+    configResult.config
+  );
+
+  const obstacles = createObstacles(
+    configResult.config,
+    snake,
+    random
+  );
+
+  const food = findFreePosition(
+    configResult.config,
+    snake,
+    obstacles,
+    [],
+    random
+  );
 
   if (!food) {
-    throw new Error("Nema slobodnog polja za početnu hranu.");
+    throw new Error(
+      "Nema slobodnog polja za početnu hranu."
+    );
   }
 
   return {
@@ -255,22 +377,37 @@ export function createInitialGameState(
 
 export function advanceGame(
   state: GameState,
-  random: () => number = Math.random,
+  random: () => number = Math.random
 ): GameState {
   if (state.status !== "running") {
     return state;
   }
 
-  const nextHead = movePosition(state.snake[0], state.queuedDirection);
-  const eatsFood = state.food !== null && positionsEqual(nextHead, state.food);
-  const eatsGolden = state.goldenFood !== null && state.goldenFood !== undefined && positionsEqual(nextHead, state.goldenFood);
+  const movedHead = movePosition(
+    state.snake[0],
+    state.queuedDirection
+  );
+
+  const nextHead = wrapPosition(
+    movedHead,
+    state.config
+  );
+
+  const eatsFood =
+    state.food !== null &&
+    positionsEqual(nextHead, state.food);
+
+  const eatsGolden =
+    state.goldenFood !== null &&
+    state.goldenFood !== undefined &&
+    positionsEqual(nextHead, state.goldenFood);
 
   const collision = detectCollision(
     nextHead,
     state.snake,
     state.obstacles,
     state.config,
-    !(eatsFood || eatsGolden),
+    !(eatsFood || eatsGolden)
   );
 
   if (collision) {
@@ -282,22 +419,42 @@ export function advanceGame(
     };
   }
 
-  const snake = (eatsFood || eatsGolden)
-    ? [nextHead, ...state.snake]
-    : [nextHead, ...state.snake.slice(0, -1)];
+  const snake =
+    eatsFood || eatsGolden
+      ? [nextHead, ...state.snake]
+      : [
+          nextHead,
+          ...state.snake.slice(0, -1),
+        ];
 
   let score = state.score;
   let food = state.food;
   let goldenFood = state.goldenFood ?? null;
-  let goldenFoodTimer = state.goldenFoodTimer ?? 0;
+  let goldenFoodTimer =
+    state.goldenFoodTimer ?? 0;
 
   if (eatsFood) {
     score += FOOD_SCORE;
-    food = findFreePosition(state.config, snake, state.obstacles, [goldenFood], random);
+
+    food = findFreePosition(
+      state.config,
+      snake,
+      state.obstacles,
+      [goldenFood],
+      random
+    );
 
     if (!goldenFood && random() < 0.25) {
-      goldenFood = findFreePosition(state.config, snake, state.obstacles, [food], random);
-      goldenFoodTimer = GOLDEN_FOOD_DURATION;
+      goldenFood = findFreePosition(
+        state.config,
+        snake,
+        state.obstacles,
+        [food],
+        random
+      );
+
+      goldenFoodTimer =
+        GOLDEN_FOOD_DURATION;
     }
   }
 
@@ -307,6 +464,7 @@ export function advanceGame(
     goldenFoodTimer = 0;
   } else if (goldenFood) {
     goldenFoodTimer -= 1;
+
     if (goldenFoodTimer <= 0) {
       goldenFood = null;
       goldenFoodTimer = 0;
@@ -325,61 +483,133 @@ export function advanceGame(
   };
 }
 
-export function validateGameState(input: unknown): GameStateValidationResult {
+export function validateGameState(
+  input: unknown
+): GameStateValidationResult {
   const errors: string[] = [];
 
-  if (typeof input !== "object" || input === null) {
-    return { ok: false, errors: ["stanje igre mora biti objekat"] };
+  if (
+    typeof input !== "object" ||
+    input === null
+  ) {
+    return {
+      ok: false,
+      errors: ["stanje igre mora biti objekat"],
+    };
   }
 
   const state = input as Partial<GameState>;
-  const configResult = validateGameConfig(state.config);
+
+  const configResult = validateGameConfig(
+    state.config
+  );
+
   if (!configResult.ok) {
-    errors.push(...configResult.errors.map((error) => `config: ${error}`));
+    errors.push(
+      ...configResult.errors.map(
+        (error) => `config: ${error}`
+      )
+    );
   }
 
-  if (!Array.isArray(state.snake) || state.snake.length === 0) {
-    errors.push("snake mora biti neprazan niz pozicija");
+  if (
+    !Array.isArray(state.snake) ||
+    state.snake.length === 0
+  ) {
+    errors.push(
+      "snake mora biti neprazan niz pozicija"
+    );
   }
+
   if (!Array.isArray(state.obstacles)) {
-    errors.push("obstacles mora biti niz pozicija");
+    errors.push(
+      "obstacles mora biti niz pozicija"
+    );
   }
+
   if (!isDirection(state.direction)) {
-    errors.push("direction mora biti važeći pravac");
+    errors.push(
+      "direction mora biti važeći pravac"
+    );
   }
+
   if (!isDirection(state.queuedDirection)) {
-    errors.push("queuedDirection mora biti važeći pravac");
+    errors.push(
+      "queuedDirection mora biti važeći pravac"
+    );
   }
+
   if (
     isDirection(state.direction) &&
     isDirection(state.queuedDirection) &&
-    isOppositeDirection(state.direction, state.queuedDirection)
+    isOppositeDirection(
+      state.direction,
+      state.queuedDirection
+    )
   ) {
-    errors.push("queuedDirection ne sme biti direktan obrt od 180 stepeni");
+    errors.push(
+      "queuedDirection ne sme biti direktan obrt od 180 stepeni"
+    );
   }
-  if (state.status !== "running" && state.status !== "paused" && state.status !== "game-over") {
-    errors.push("status mora biti running, paused ili game-over");
+
+  if (
+    state.status !== "running" &&
+    state.status !== "paused" &&
+    state.status !== "game-over"
+  ) {
+    errors.push(
+      "status mora biti running, paused ili game-over"
+    );
   }
+
   if (
     typeof state.score !== "number" ||
     !Number.isInteger(state.score) ||
     state.score < 0 ||
     state.score % FOOD_SCORE !== 0
   ) {
-    errors.push(`score mora biti nenegativan ceo umnožak od ${FOOD_SCORE}`);
-  }
-  if (state.collision !== null && !isCollision(state.collision)) {
-    errors.push("collision mora biti null, wall, obstacle ili self");
-  }
-  if ((state.status === "running" || state.status === "paused") && state.collision !== null) {
-    errors.push("aktivna ili pauzirana partija ne sme imati collision");
-  }
-  if (state.status === "game-over" && !isCollision(state.collision)) {
-    errors.push("završena partija mora imati collision");
+    errors.push(
+      `score mora biti nenegativan ceo umnožak od ${FOOD_SCORE}`
+    );
   }
 
-  if (!configResult.ok || !Array.isArray(state.snake) || !Array.isArray(state.obstacles)) {
-    return { ok: false, errors };
+  if (
+    state.collision !== null &&
+    !isCollision(state.collision)
+  ) {
+    errors.push(
+      "collision mora biti null, wall, obstacle ili self"
+    );
+  }
+
+  if (
+    (state.status === "running" ||
+      state.status === "paused") &&
+    state.collision !== null
+  ) {
+    errors.push(
+      "aktivna ili pauzirana partija ne sme imati collision"
+    );
+  }
+
+  if (
+    state.status === "game-over" &&
+    !isCollision(state.collision)
+  ) {
+    errors.push(
+      "završena partija mora imati collision"
+    );
+  }
+
+  if (
+    !configResult.ok ||
+    !Array.isArray(state.snake) ||
+    !Array.isArray(state.obstacles)
+  ) {
+    return {
+      ok: false,
+      errors,
+    };
   }
 
   const config = configResult.config;
@@ -387,62 +617,150 @@ export function validateGameState(input: unknown): GameStateValidationResult {
   const obstacles = state.obstacles;
   const food = state.food;
   const goldenFood = state.goldenFood;
-  const goldenFoodTimer = state.goldenFoodTimer;
+  const goldenFoodTimer =
+    state.goldenFoodTimer;
 
-  if (obstacles.length !== config.obstacleCount) {
-    errors.push("broj prepreka ne odgovara config.obstacleCount");
-  }
-  if (snake.some((position) => !isPosition(position) || !isWithinBounds(position, config))) {
-    errors.push("snake sadrži nevažeću ili poziciju van table");
-  }
-  if (obstacles.some((position) => !isPosition(position) || !isWithinBounds(position, config))) {
-    errors.push("obstacles sadrži nevažeću ili poziciju van table");
+  if (
+    obstacles.length !== config.obstacleCount
+  ) {
+    errors.push(
+      "broj prepreka ne odgovara config.obstacleCount"
+    );
   }
 
-  const allBoardPositions = [...snake, ...obstacles];
-  if (new Set(allBoardPositions.map(positionKey)).size !== allBoardPositions.length) {
-    errors.push("zmija i prepreke ne smeju se preklapati niti imati duplikate");
+  if (
+    snake.some(
+      (position) =>
+        !isPosition(position) ||
+        !isWithinBounds(position, config)
+    )
+  ) {
+    errors.push(
+      "snake sadrži nevažeću ili poziciju van table"
+    );
+  }
+
+  if (
+    obstacles.some(
+      (position) =>
+        !isPosition(position) ||
+        !isWithinBounds(position, config)
+    )
+  ) {
+    errors.push(
+      "obstacles sadrži nevažeću ili poziciju van table"
+    );
+  }
+
+  const allBoardPositions = [
+    ...snake,
+    ...obstacles,
+  ];
+
+  if (
+    new Set(
+      allBoardPositions.map(positionKey)
+    ).size !== allBoardPositions.length
+  ) {
+    errors.push(
+      "zmija i prepreke ne smeju se preklapati niti imati duplikate"
+    );
   }
 
   if (food === undefined) {
-    errors.push("food mora biti null ili važeća pozicija na tabli");
+    errors.push(
+      "food mora biti null ili važeća pozicija na tabli"
+    );
   } else if (
     food !== null &&
-    (!isPosition(food) || !isWithinBounds(food, config))
+    (!isPosition(food) ||
+      !isWithinBounds(food, config))
   ) {
-    errors.push("food mora biti null ili važeća pozicija na tabli");
+    errors.push(
+      "food mora biti null ili važeća pozicija na tabli"
+    );
   }
 
   if (
     food !== null &&
     food !== undefined &&
     isPosition(food) &&
-    allBoardPositions.some((position) => positionsEqual(position, food))
+    allBoardPositions.some(
+      (position) =>
+        positionsEqual(position, food)
+    )
   ) {
-    errors.push("food ne sme biti na zmiji ili prepreci");
+    errors.push(
+      "food ne sme biti na zmiji ili prepreci"
+    );
   }
 
-  if (food === null && allBoardPositions.length < config.gridWidth * config.gridHeight) {
-    errors.push("food može biti null samo kada nema slobodnih polja");
+  if (
+    food === null &&
+    allBoardPositions.length <
+      config.gridWidth * config.gridHeight
+  ) {
+    errors.push(
+      "food može biti null samo kada nema slobodnih polja"
+    );
   }
 
-  if (goldenFood !== undefined && goldenFood !== null) {
-    if (!isPosition(goldenFood) || !isWithinBounds(goldenFood, config)) {
-      errors.push("goldenFood mora biti validna pozicija na tabli");
-    } else if (allBoardPositions.some((position) => positionsEqual(position, goldenFood))) {
-      errors.push("goldenFood ne sme biti na zmiji ili prepreci");
-    } else if (food !== null && food !== undefined && positionsEqual(food, goldenFood)) {
-      errors.push("goldenFood ne sme biti na običnoj hrani");
+  if (
+    goldenFood !== undefined &&
+    goldenFood !== null
+  ) {
+    if (
+      !isPosition(goldenFood) ||
+      !isWithinBounds(
+        goldenFood,
+        config
+      )
+    ) {
+      errors.push(
+        "goldenFood mora biti validna pozicija na tabli"
+      );
+    } else if (
+      allBoardPositions.some(
+        (position) =>
+          positionsEqual(
+            position,
+            goldenFood
+          )
+      )
+    ) {
+      errors.push(
+        "goldenFood ne sme biti na zmiji ili prepreci"
+      );
+    } else if (
+      food !== null &&
+      food !== undefined &&
+      positionsEqual(food, goldenFood)
+    ) {
+      errors.push(
+        "goldenFood ne sme biti na običnoj hrani"
+      );
     }
   }
 
-  if (goldenFoodTimer !== undefined && (!Number.isInteger(goldenFoodTimer) || goldenFoodTimer < 0)) {
-    errors.push("goldenFoodTimer mora biti nenegativan ceo broj");
+  if (
+    goldenFoodTimer !== undefined &&
+    (!Number.isInteger(goldenFoodTimer) ||
+      goldenFoodTimer < 0)
+  ) {
+    errors.push(
+      "goldenFoodTimer mora biti nenegativan ceo broj"
+    );
   }
 
   if (errors.length > 0) {
-    return { ok: false, errors };
+    return {
+      ok: false,
+      errors,
+    };
   }
 
-  return { ok: true, state: state as GameState };
+  return {
+    ok: true,
+    state: state as GameState,
+  };
 }
