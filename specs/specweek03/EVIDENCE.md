@@ -1,58 +1,67 @@
-# EVIDENCE.md — Week 3 / Session 003
+# Evidence — Week 3 / Session 003
 
 ## Scope
 
-Ova evidence pokriva Session 003. Session 004, AI Hint i tool calling nisu deo
-ove predaje.
+Predaja pokriva Week 3 / Session 003. Week 4 AI Hint i tool calling nisu deo
+scope-a.
 
-## Automated verification
+## Baseline
+
+Repo baseline pre ove izmene: commit `844ccdba` (`Add SpecKit`). Na tom commitu
+lokalna provera je dala typecheck PASS, 45/45 testova PASS i build PASS.
+`npm audit` je prijavio pet ranjivosti (3 moderate, 1 high, 1 critical).
+Raniji tutorov nalaz 10/19 neuspešnih testova odnosi se na starije stanje; to
+stanje nije ovaj commit.
+
+## Kontrolisana izmena
+
+**Hipoteza:** Vite/Vitest nadogradnja uklanja prijavljene ranjivosti bez
+regresije; izdvajanje High Score persistence helper-a omogućava direktne
+provere kreiranja i očuvanja rekorda.
+
+**Izmena:** nadograđeni su Vite/Vitest; `getHighScore`/`saveHighScore` izdvojeni
+su u `src/highScore.ts`; `tests/highScore.test.ts` pokriva čitanje, upis novog
+rekorda, očuvanje boljeg rekorda i nedostupan storage.
+
+**Signal i rezultat:** typecheck PASS; 49/49 testova PASS; production build
+PASS; `npm audit` PASS (0 ranjivosti). Testovi ne zamenjuju stvarnu proveru UI-ja.
+
+## Traceability
+
+| Zahtev | Implementacija | Automatizovani dokaz | Status |
+| --- | --- | --- | --- |
+| Grid 30×30; težine 30/70/90 prepreka | `src/types.ts`, `src/main.ts` | `tests/gameConfig.test.ts` | PASS |
+| Kretanje i zabrana obrta za 180° | `src/game.ts` | `tests/game.test.ts` | PASS |
+| Wrap-around na sve četiri ivice | `wrapPosition`, `advanceGame` | četiri boundary testa | PASS |
+| Hrana, score, zlatna hrana i timer | `advanceGame` | `tests/game.test.ts` | PASS |
+| Sudari, Game Over state, pause | `src/game.ts` | `tests/game.test.ts` | PASS |
+| Runtime validacija | `validateGameConfig`, `validateGameState` | config/state testovi | PASS |
+| High Score helper | `src/highScore.ts` | `tests/highScore.test.ts` | PASS |
+
+## Browser evidence
+
+| ID | Scenario | Rezultat | Artefakt |
+| --- | --- | --- | --- |
+| EVID-01 | Početni prikaz: Canvas, HUD, zmija i prepreke | PASS | [`initial-game.png`](evidence/initial-game.png), [`browser_checks.mp4`](evidence/browser_checks.mp4) |
+| EVID-02 | Kretanje tastaturom | PASS prema dostavljenom snimku | [`browser_checks.mp4`](evidence/browser_checks.mp4) |
+| EVID-03 | Wrap-around u browseru | PASS prema dostavljenom snimku | [`browser_checks.mp4`](evidence/browser_checks.mp4) |
+| EVID-04 | Pause/resume overlay | PASS prema dostavljenom snimku | [`browser_checks.mp4`](evidence/browser_checks.mp4) |
+| EVID-05 | Game Over i restart | PASS prema dostavljenom snimku | [`browser_checks.mp4`](evidence/browser_checks.mp4) |
+| EVID-06 | High Score nakon osvajanja poena i refresh-a | PASS prema dostavljenom snimku | [`browser_checks.mp4`](evidence/browser_checks.mp4) |
+
+Početni prikaz je snimljen u Microsoft Edge headless. Učesnica je dodala
+`browser_checks.mp4` i navela da prikazuje kretanje tastaturom, refresh, pauzu,
+Game Over, prelazak preko ivice i pokretanje nove igre. Statusi iznad se oslanjaju
+na taj dostavljeni snimak; automatizovani testovi za domensku logiku i High Score
+helper prikazani su odvojeno u prethodnoj tabeli.
+
+## Ponovljene provere
+
+Pokrenuto nakon izmena:
 
 | Komanda | Rezultat |
 | --- | --- |
 | `npm run typecheck` | PASS |
-| `npm test` | PASS — 45 tests |
+| `npm test` | PASS — 49/49 testova, 3 fajla |
 | `npm run build` | PASS |
-
-Automated testovi pokrivaju movement, direction validation, 180° restriction,
-wrap-around preko sve četiri ivice, prepreke, self collision, food, golden food,
-pause, state validation i config validation.
-
-## Traceability
-
-| Zahtev | Implementacija | Test/dokaz | Status |
-| --- | --- | --- | --- |
-| Grid 30×30 i difficulty 30/70/90 | `src/types.ts`, `src/main.ts` | `tests/gameConfig.test.ts` | PASS |
-| Movement i 180° restriction | `src/game.ts` | `tests/game.test.ts` | PASS |
-| Wrap-around | `wrapPosition`, `advanceGame` | četiri boundary testa | PASS |
-| Obstacle collision | `src/game.ts` | `tests/game.test.ts` | PASS |
-| Self collision | `src/game.ts` | `tests/game.test.ts` | PASS |
-| Food/golden food | `advanceGame` | `tests/game.test.ts` | PASS |
-| Pause/resume | `togglePause`, `src/main.ts` | unit test + browser check | PASS |
-| Game Over/restart | `advanceGame`, `src/main.ts` | unit test + browser check | PASS |
-| Runtime validation | `validateGameConfig`, `validateGameState` | validation tests | PASS |
-| High Score persistence | `src/main.ts` | browser check | PASS |
-
-## Browser evidence
-
-Ove stavke ostaju otvorene dok ne budu proverene u browseru i dokumentovane
-screenshotom ili drugim jasnim runtime dokazom:
-
-| ID | Scenario | Status |
-| --- | --- | --- |
-| EVID-01 | Initial game / Canvas / HUD | PASS |
-| EVID-02 | Wrap-around | PASS |
-| EVID-03 | Game Over overlay | PASS |
-| EVID-04 | Pause/resume overlay | PASS |
-| EVID-05 | Restart bez reload-a | PASS |
-| EVID-06 | High Score posle refresh-a | PASS |
-
-## Known limitations
-
-Unit testovi ne predstavljaju zamenu za browser proveru Canvas renderovanja,
-keyboard input-a, DOM overlay-a, game loop-a i `localStorage` persistence-a.
-
-## Dependency note
-
-Dependency tree sadrži ranije evidentirane razvojne/test vulnerabilnosti. Nije
-pokretan breaking upgrade niti `npm audit fix --force`, u skladu sa pravilima
-repozitorijuma.
+| `npm audit` | PASS — 0 ranjivosti |

@@ -62,9 +62,9 @@ Kopirano iz `GAME_SPEC.md` — implementacija se smatra završenom tek kada su
 - `src/` — implementacija igre. `src/types.ts` već sadrži `GameConfig` ugovor
   i `validateGameConfig()` — nastavi taj obrazac (tip + runtime validacija)
   za svaki naredni strukturisani deo, ne piši samo TS tipove bez provere.
-- `src/main.ts` — trenutno je baseline stub (crta placeholder poruku); ovde
-  dodaješ pravi game loop, ili ga izdvajaš u novi fajl unutar `src/` po
-  potrebi.
+- `src/main.ts` — u trenutnom checkout-u sadrži Canvas UI, input, game loop,
+  restart i high score. Ovaj prompt je istorijski zapis zadatka za Session 003;
+  starter-stub opis iz prvobitnog prompta više nije aktuelno stanje koda.
 - `tests/` — testovi i eval slučajevi (`tests/gameConfig.test.ts` je već tu
   kao primer stila/formata; nastavi u istom duhu).
 - `index.html` — samo ako je zaista neophodno (npr. dodatni DOM element za
@@ -73,8 +73,8 @@ Kopirano iz `GAME_SPEC.md` — implementacija se smatra završenom tek kada su
   `specs/specweek03/EVIDENCE.md`,
   možeš predložiti izmene,
   ali ja potvrđujem sadržaj pre commit-a.
-- `package.json` — ne diraj bez eksplicitnog odobrenja (skripte `dev`,
-  `build`, `typecheck`, `test` već postoje i treba da ostanu stabilne).
+- `package.json` — ne menjaj bez eksplicitnog odobrenja. Dependency bezbednosne
+  izmene zahtevaju pregled i punu proveru pipeline-a.
 
 Van ovoga ne diraj ništa bez pitanja.
 

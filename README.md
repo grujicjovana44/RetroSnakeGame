@@ -2,7 +2,7 @@
 
 A modern take on the classic **Snake game**, featuring procedural obstacles, standard and golden food, score tracking, High Score persistence, and a strictly typed TypeScript architecture.
 
-> 🎮 Developed as part of the **Retro AI Engineering Challenge — Week 3 / Sessions 003–004**
+> 🎮 Developed for **Week 3 / Session 003**. Session 004 AI Hint and tool calling are out of scope.
 
 ---
 
@@ -127,7 +127,8 @@ http://localhost:5173
 | ⬇️ `Arrow Down` / `S`  | Move down      |
 | ⬅️ `Arrow Left` / `A`  | Move left      |
 | ➡️ `Arrow Right` / `D` | Move right     |
-| `Space` / `P`          | Pause / Resume |
+| `P` / `Escape`          | Pause / Resume |
+| `Space`                 | Restart after Game Over |
 
 ---
 

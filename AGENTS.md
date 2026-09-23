@@ -43,7 +43,7 @@ Testovi treba da proveravaju ponašanje definisano specifikacijom, a evaluacije 
 * Ne menjaj `package.json` ili `package-lock.json` bez odobrenja.
 * Skripte `dev`, `build`, `typecheck` i `test` treba da ostanu stabilne.
 * Svaki strukturisani podatak treba da prati obrazac iz `src/types.ts`: TypeScript tip i runtime validacija gde je validacija potrebna.
-* Pre nego što kažeš da je izmena završena, pokreni `npm run typecheck` i `npm test`.
+* Pre nego što kažeš da je izmena završena, pokreni `npm run typecheck`, `npm test` i `npm run build`.
 * Ako validacije ne prolaze, nemoj izmenu predstavljati kao završenu.
 * Ne unositi API ključeve, tokene ili druge tajne u kod, testove, commit poruke ili dokumentaciju.
 * Ne pokretati `git commit` ili `git push` samostalno. Pripremiti izmene i omogućiti čoveku da pregleda i odluči kada se commit-uje.
@@ -76,7 +76,8 @@ npm run build
 
 Ne koristiti `npm audit fix --force` niti uvoditi breaking dependency upgrades bez eksplicitnog odobrenja i naknadne verifikacije projekta.
 
-Security audit rezultate dokumentovati kao poznata ograničenja kada automatski non-breaking fix nije dostupan.
+Redovno proveravati `npm audit`. Ako kompatibilne zakrpe nisu dostupne, prijaviti
+potreban major upgrade i uticaj pre nego što zavisnosti menjaju.
 
 ## Zabranjene putanje i akcije
 

@@ -7,5 +7,5 @@
 - [x] T005 Implementirati pause, game-over, restart i High Score UI.
 - [x] T006 Dodati runtime validaciju `GameConfig` i `GameState`.
 - [x] T007 Pokrenuti typecheck, testove i production build.
-- [x] T008 Ručno proveriti Canvas, keyboard input i overlays u browseru.
-- [x] T009 Dokumentovati High Score persistence browser dokazom.
+- [x] T008 Sačuvati browser dokaz za Canvas, keyboard input i overlays (`evidence/browser_checks.mp4`).
+- [x] T009 Sačuvati browser dokaz za High Score persistence (`evidence/browser_checks.mp4`).

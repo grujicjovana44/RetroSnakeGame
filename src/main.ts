@@ -15,6 +15,7 @@ import {
   resolveStartingSpeedMs,
   validateGameConfig,
 } from "./types";
+import { getHighScore, saveHighScore } from "./highScore";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement | null;
 const scoreEl = document.getElementById("score");
@@ -49,25 +50,6 @@ const DIFFICULTY_LABELS: Record<Difficulty, string> = {
 
 function isDifficulty(value: string | undefined): value is Difficulty {
   return value === "easy" || value === "normal" || value === "hard";
-}
-
-function getHighScore(): number {
-  try {
-    const saved = localStorage.getItem("snake_highscore");
-    return saved ? parseInt(saved, 10) || 0 : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function saveHighScore(score: number): void {
-  try {
-    if (score > getHighScore()) {
-      localStorage.setItem("snake_highscore", String(score));
-    }
-  } catch {
-    // Sprečava greške u okruženjima bez pristupa localStorage
-  }
 }
 
 function boot(): void {

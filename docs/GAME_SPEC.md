@@ -424,9 +424,9 @@ Browser provera treba da bude dokumentovana screenshotovima ili drugim jasnim ru
 * [x] Restart radi bez reload-a stranice.
 * [x] GameConfig ima runtime validaciju.
 * [x] GameState ima runtime validaciju.
-* [ ] Browser verification je dokumentovana u `EVIDENCE.md`.
-* [ ] High Score persistence je pokrivena automatizovanim testom.
-* [ ] High Score browser ponašanje je dokumentovano u `EVIDENCE.md`.
+* [x] Browser verification je dokumentovana u `EVIDENCE.md` (`browser_checks.mp4`).
+* [x] High Score persistence je pokrivena automatizovanim testom.
+* [x] High Score browser ponašanje je dokumentovano u `EVIDENCE.md` (`browser_checks.mp4`).
 * [x] `npm run typecheck` prolazi.
 * [x] `npm test` prolazi.
 * [x] `npm run build` prolazi.
@@ -462,5 +462,5 @@ Sledeće funkcionalnosti nisu deo Week 3:
 | Pause              | `togglePause` + UI                         | unit + browser evidence             |
 | Game Over          | `advanceGame` + UI                         | collision test + browser evidence   |
 | Runtime validation | `validateGameConfig` / `validateGameState` | validation testovi                  |
-| High Score         | UI/persistence sloj                        | persistence test + browser evidence |
+| High Score         | `src/highScore.ts` + UI                    | `tests/highScore.test.ts`; browser evidence još nedostaje |
 | Build/typecheck    | project scripts                            | `EVIDENCE.md`                       |
