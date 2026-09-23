@@ -24,6 +24,19 @@ Sve verifikacione komande su izvršene i potvrdile da je projekat u potpunosti f
 - **Status:** PASS
 - **Opis:** Produkciona kompilacija (typecheck + vite build) je završena bez grešaka.
 
+## Dependency audit
+
+`npm audit` reports vulnerabilities in development dependencies
+used by the Vite/Vitest toolchain.
+
+The reported vulnerabilities are not part of the application runtime
+dependency graph.
+
+Verification:
+
+```bash
+npm audit --omit=dev
+
 ## Tabela pokrivenosti zahteva (Traceability)
 
 | Zahtev | Lokacija u kodu | Pokrivenost testovima | Status |
