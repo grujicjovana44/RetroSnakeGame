@@ -32,7 +32,11 @@ Ključne vrednosti koje moraju ostati usklađene sa kodom su:
 - [x] Faza 3: obična/zlatna hrana, pauza i High Score UI.
 - [x] Faza 4: Canvas renderovanje i status overlays.
 - [x] Faza 5: automated verification.
-- [ ] Faza 6: browser evidence za ponašanja zavisna od runtime-a.
+- [x] Faza 6: browser evidence artefakti su sačuvani i opisani u `EVIDENCE.md`.
+  Tabela u evidenciji precizira koji scenariji su navedeni; ne zaključuje da je
+  svaki obavezni browser scenario zasebno dokumentovan.
+- [x] Faza 7: automatizovani Chromium smoke/E2E testovi za UI, keyboard input,
+  restart i High Score integraciju.
 
 ## Verification
 

@@ -116,6 +116,25 @@ http://localhost:5173
 | `npm run preview`   | Locally previews the generated production build.                                            |
 | `npm run typecheck` | Runs the TypeScript compiler in type-checking mode without emitting files (`tsc --noEmit`). |
 | `npm test`          | Runs all unit and integration tests using Vitest.                                           |
+| `npm run test:e2e`  | Runs end-to-end browser tests using Playwright and Chromium.                               |
+
+For the first browser test run, install Playwright's Chromium browser:
+
+```bash
+npx playwright install chromium
+```
+
+Start the Vite server in one terminal:
+
+```bash
+npm run dev -- --host 127.0.0.1 --port 4173
+```
+
+Then run the browser tests in another terminal:
+
+```bash
+npm run test:e2e
+```
 
 ---
 
@@ -139,22 +158,32 @@ RetroSnakeGame/
 ├── docs/
 │   ├── GAME_SPEC.md
 │   ├── BUILD_PROMPT_V1.md
-│   └── CONTEXT_MANIFEST.md
+│   ├── CONTEXT_MANIFEST.md
+│   ├── EVALS.md
+│   └── AI_USAGE_LOG.md
 │
 ├── specs/
 │   └── specweek03/
+│       ├── SPEC.md
 │       ├── PLAN.md
-│       └── EVIDENCE.md
+│       ├── TASKS.md
+│       ├── EVIDENCE.md
+│       └── evidence/ (screenshot i browser snimak)
 │
 ├── src/
 │   ├── game.ts
+│   ├── highScore.ts
 │   ├── main.ts
 │   └── types.ts
 │
 ├── tests/
 │   ├── game.test.ts
-│   └── gameConfig.test.ts
+│   ├── gameConfig.test.ts
+│   └── highScore.test.ts
 │
+├── e2e/
+│   └── game.spec.ts
+├── playwright.config.ts
 ├── index.html
 ├── package.json
 └── tsconfig.json
@@ -166,14 +195,17 @@ RetroSnakeGame/
 * **`specs/`** — development plans and verification evidence
 * **`src/`** — application source code
 * **`tests/`** — unit and integration tests
+* **`e2e/`** — browser end-to-end tests
 
 ### 📄 Key Files
 
 * `game.ts` — core game logic: movement, collisions, food, and validation
+* `highScore.ts` — High Score localStorage helper
 * `main.ts` — rendering initialization and event listeners
 * `types.ts` — interfaces, types, and `GameConfig` contracts
 * `game.test.ts` — tests for movement, collision, and game-state logic
 * `gameConfig.test.ts` — configuration validation tests
+* `highScore.test.ts` — High Score persistence helper tests
 
 ---
 

@@ -462,5 +462,5 @@ Sledeće funkcionalnosti nisu deo Week 3:
 | Pause              | `togglePause` + UI                         | unit + browser evidence             |
 | Game Over          | `advanceGame` + UI                         | collision test + browser evidence   |
 | Runtime validation | `validateGameConfig` / `validateGameState` | validation testovi                  |
-| High Score         | `src/highScore.ts` + UI                    | `tests/highScore.test.ts`; browser evidence još nedostaje |
+| High Score         | `src/highScore.ts` + UI                    | `tests/highScore.test.ts`; browser scenario je prijavljen u `specs/specweek03/EVIDENCE.md` na osnovu dostavljenog snimka |
 | Build/typecheck    | project scripts                            | `EVIDENCE.md`                       |
