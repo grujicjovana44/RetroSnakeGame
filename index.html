@@ -56,6 +56,26 @@
         background: #8fd694;
         color: #111417;
       }
+      #ai-advice {
+        border-color: #f3c969;
+      }
+      #ai-advice-panel {
+        border: 1px solid #3a3f47;
+        max-width: 560px;
+        padding: 12px 16px;
+        width: calc(100% - 32px);
+      }
+      #ai-advice-panel[hidden] {
+        display: none;
+      }
+      #ai-advice-panel h2 {
+        color: #f3c969;
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+      #ai-advice-panel p {
+        margin: 6px 0;
+      }
     </style>
   </head>
   <body>
@@ -72,6 +92,12 @@
     </div>
     <canvas id="game" width="400" height="400"></canvas>
     <button id="restart" type="button" hidden>Restartuj partiju</button>
+    <button id="ai-advice" type="button" hidden>AI Advice</button>
+    <section id="ai-advice-panel" aria-live="polite" hidden>
+      <h2>AI Advice</h2>
+      <p id="ai-advice-summary"></p>
+      <p id="ai-advice-recommendation"></p>
+    </section>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

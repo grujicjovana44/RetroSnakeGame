@@ -1,5 +1,17 @@
 # AI Usage Log — Week 3 / Session 003
 
+## W04 provider usage
+
+The W04 implementation uses a fake provider for automated tests. Two limited
+live Gemini attempts were made during development; the latest returned a safe
+HTTP 502 response with internal status `provider_error`. No API key, raw
+provider response, or secret appears in this document.
+
+| Provider | Model | Purpose | Result |
+| --- | --- | --- | --- |
+| fake | test | A1-A5 automated reliability tests | PASS |
+| Gemini | gemini-2.5-flash| Limited live integration confirmation | Safe 502; not confirmed |
+
 ## Record scope
 
 This log records the AI-assisted follow-up work reflected in commit

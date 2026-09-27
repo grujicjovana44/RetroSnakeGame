@@ -21,6 +21,10 @@ const canvas = document.getElementById("game") as HTMLCanvasElement | null;
 const scoreEl = document.getElementById("score");
 const statusEl = document.getElementById("status");
 const restartButton = document.getElementById("restart") as HTMLButtonElement | null;
+const adviceButton = document.getElementById("ai-advice") as HTMLButtonElement | null;
+const advicePanel = document.getElementById("ai-advice-panel");
+const adviceSummaryEl = document.getElementById("ai-advice-summary");
+const adviceRecommendationEl = document.getElementById("ai-advice-recommendation");
 const difficultyButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-difficulty]"),
 );
@@ -47,6 +51,8 @@ const DIFFICULTY_LABELS: Record<Difficulty, string> = {
   normal: "Normalno",
   hard: "Brzo",
 };
+
+const BACKEND_URL = "http://127.0.0.1:3001";
 
 function isDifficulty(value: string | undefined): value is Difficulty {
   return value === "easy" || value === "normal" || value === "hard";
@@ -76,6 +82,8 @@ function boot(): void {
   let state: GameState;
   let pendingConfig: GameConfig = configResult.config;
   let timerId: number | undefined;
+  let gameStartedAt = Date.now();
+  let foodCollected = 0;
 
   function stopLoop(): void {
     if (timerId !== undefined) {
@@ -250,6 +258,7 @@ function boot(): void {
         statusEl.textContent = `Status: igraš — ${difficultySummary(state.config)} | 'P' za pauzu`;
       }
       if (restartButton) restartButton.hidden = true;
+      if (adviceButton) adviceButton.hidden = true;
       return;
     }
 
@@ -287,6 +296,7 @@ function boot(): void {
       statusEl.textContent = `Status: game over — ${COLLISION_LABELS[state.collision]}; sledeća brzina: ${difficultySummary(pendingConfig)}`;
     }
     if (restartButton) restartButton.hidden = false;
+    if (adviceButton) adviceButton.hidden = false;
   }
 
   function tick(): void {
@@ -295,6 +305,9 @@ function boot(): void {
     }
 
     const nextState = advanceGame(state);
+    if (nextState.score > state.score) {
+      foodCollected += 1;
+    }
     if (!applyState(nextState)) {
       return;
     }
@@ -307,6 +320,10 @@ function boot(): void {
 
   function restart(): void {
     stopLoop();
+    gameStartedAt = Date.now();
+    foodCollected = 0;
+    if (adviceButton) adviceButton.hidden = true;
+    if (advicePanel) advicePanel.hidden = true;
     const nextState = createInitialGameState(pendingConfig);
     if (!applyState(nextState)) {
       return;
@@ -314,6 +331,57 @@ function boot(): void {
 
     render();
     timerId = window.setInterval(tick, resolveStartingSpeedMs(pendingConfig));
+  }
+
+  async function requestAiAdvice(): Promise<void> {
+    if (state.status !== "game-over" || !adviceButton || !advicePanel) {
+      return;
+    }
+
+    adviceButton.disabled = true;
+    adviceButton.textContent = "AI Advice se ucitava...";
+    advicePanel.hidden = false;
+    if (adviceSummaryEl) adviceSummaryEl.textContent = "Analiziram zavrsenu partiju...";
+    if (adviceRecommendationEl) adviceRecommendationEl.textContent = "";
+
+    try {
+      const sessionResponse = await fetch(`${BACKEND_URL}/api/game/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          score: state.score,
+          durationSeconds: Math.max(0, Math.round((Date.now() - gameStartedAt) / 1000)),
+          collisions: state.collision ? 1 : 0,
+          foodCollected,
+        }),
+      });
+      if (!sessionResponse.ok) throw new Error("session-request-failed");
+      const session = (await sessionResponse.json()) as { sessionId?: string };
+      if (!session.sessionId) throw new Error("missing-session-id");
+
+      const adviceResponse = await fetch(`${BACKEND_URL}/api/ai/advice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: session.sessionId }),
+      });
+      const result = (await adviceResponse.json()) as {
+        success: boolean;
+        advice?: { summary: string; recommendation: string; category: string };
+        message?: string;
+      };
+      if (!adviceResponse.ok || !result.success || !result.advice) {
+        throw new Error("advice-request-failed");
+      }
+
+      if (adviceSummaryEl) adviceSummaryEl.textContent = result.advice.summary;
+      if (adviceRecommendationEl) adviceRecommendationEl.textContent = result.advice.recommendation;
+    } catch {
+      if (adviceSummaryEl) adviceSummaryEl.textContent = "AI savet trenutno nije dostupan.";
+      if (adviceRecommendationEl) adviceRecommendationEl.textContent = "Pokusajte ponovo kasnije.";
+    } finally {
+      adviceButton.disabled = false;
+      adviceButton.textContent = "AI Advice";
+    }
   }
 
   function selectDifficulty(difficulty: Difficulty): void {
@@ -375,6 +443,9 @@ function boot(): void {
   }
 
   restartButton?.addEventListener("click", restart);
+  adviceButton?.addEventListener("click", () => {
+    void requestAiAdvice();
+  });
   updateDifficultyControls();
   restart();
 }
