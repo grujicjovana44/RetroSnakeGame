@@ -1,5 +1,11 @@
 # AI_FEATURE_PROMPT.md
 
+> Historical implementation prompt. Its dependency suggestions and pre-code
+> instructions describe the initial proposal, not the current implementation.
+> The current provider package is `@google/genai`; use
+> `AI_FEATURE_SPEC.md`, `AI_PROVIDER_CONTRACT.md`, and `EVIDENCE_W04.md` as the
+> current behavior and verification record.
+
 Pre implementacije:
 1. Sažmi razumevanje zadatka.
 2. Navedi plan u nekoliko koraka.

@@ -2,7 +2,7 @@
 
 A modern take on the classic **Snake game**, featuring procedural obstacles, standard and golden food, score tracking, High Score persistence, and a strictly typed TypeScript architecture.
 
-> 🎮 Developed for **Week 3 / Session 003**. Session 004 AI Hint and tool calling are out of scope.
+> 🎮 W03 core game with the W04 post-game AI Advice feature and private local usage report.
 
 ---
 
@@ -53,6 +53,18 @@ Immediate reversal into the opposite direction is prevented, avoiding accidental
 * Pause and resume functionality using `togglePause`.
 * Automatic tracking and local persistence of the **High Score**.
 
+### 🤖 AI Advice and Usage
+
+After Game Over, the player can request a short structured analysis of the
+completed game. The TypeScript backend validates game data, calls Gemini using
+the configured `gemini-3.8-flash` model, validates the result, and returns a
+safe response. The API key belongs only in the backend environment.
+
+Token usage is not shown in the game. The backend writes request counts,
+outcomes, latency, model, timestamp, and available prompt/output/total token
+metadata to `server/ai-usage.local.json`. This local report is Git-ignored,
+contains no session IDs or provider content, and keeps at most 500 records.
+
 ### 🧪 Testing and Validation
 
 The project includes game-state validation through `validateGameState`, together with comprehensive **unit and integration tests** implemented using Vitest.
@@ -64,8 +76,11 @@ The project includes game-state validation through `validateGameState`, together
 | Technology       | Usage                                    |
 | ---------------- | ---------------------------------------- |
 | **TypeScript**   | Main programming language, `strict mode` |
+| **Node.js**      | TypeScript backend and local HTTP API      |
 | **Vite**         | Bundler and development server           |
 | **Vitest**       | Unit and integration testing             |
+| **Gemini SDK**   | Backend-only AI provider integration      |
+| **Zod**          | Runtime validation of AI request/output   |
 | **HTML5 Canvas** | Game rendering                           |
 | **CSS3**         | Styling and retro console interface      |
 
@@ -77,7 +92,7 @@ The project includes game-state validation through `validateGameState`, together
 
 Make sure you have the following installed:
 
-* [Node.js](https://nodejs.org/) — version **18 or higher**
+* [Node.js](https://nodejs.org/) — version **20.19+ or 22.12+** (required by Vite 8)
 * **npm** package manager
 
 ### 1. Clone the Repository
@@ -93,17 +108,36 @@ cd RetroSnakeGame
 npm install
 ```
 
-### 3. Start the Development Server
+### 3. Configure the backend
+
+Copy `server/.env.example` to `server/.env` and set `GEMINI_API_KEY` there if
+you want to use live AI Advice. Never place the key in frontend code or commit
+the `.env` file. The game can still run without a key; live advice will return
+the safe unavailable message.
+
+### 4. Start the backend and frontend
+
+In the first terminal:
 
 ```bash
-npm run dev
+npm run dev:backend
+```
+
+In a second terminal:
+
+```bash
+npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
 The application will be available at:
 
 ```text
-http://localhost:5173
+http://127.0.0.1:5173
 ```
+
+The backend listens on `http://127.0.0.1:3001`. Its default browser-origin
+allowlist permits `localhost:5173` and `127.0.0.1:5173`; configure
+`FRONTEND_ORIGINS` in `server/.env` if the frontend uses another local origin.
 
 ---
 
@@ -112,8 +146,9 @@ http://localhost:5173
 | Command             | Description                                                                                 |
 | ------------------- | ------------------------------------------------------------------------------------------- |
 | `npm run dev`       | Starts the local Vite development server with hot reload.                                   |
+| `npm run dev:backend` | Starts the TypeScript backend on `127.0.0.1:3001`.                                          |
 | `npm run build`     | Creates an optimized production build in the `dist/` directory.                             |
-| `npm run preview`   | Locally previews the generated production build.                                            |
+| `npx vite preview`  | Locally previews the generated production build.                                            |
 | `npm run typecheck` | Runs the TypeScript compiler in type-checking mode without emitting files (`tsc --noEmit`). |
 | `npm test`          | Runs all unit and integration tests using Vitest.                                           |
 | `npm run test:e2e`  | Runs end-to-end browser tests using Playwright and Chromium.                               |
@@ -160,15 +195,32 @@ RetroSnakeGame/
 │   ├── BUILD_PROMPT_V1.md
 │   ├── CONTEXT_MANIFEST.md
 │   ├── EVALS.md
+│   ├── AI_FEATURE_SPEC.md
+│   ├── AI_FEATURE_PROMPT.md
+│   ├── AI_PROVIDER_CONTRACT.md
+│   ├── AI_EVALS.md
+│   ├── EVIDENCE_W04.md
 │   └── AI_USAGE_LOG.md
 │
 ├── specs/
-│   └── specweek03/
+│   ├── specweek03/
 │       ├── SPEC.md
 │       ├── PLAN.md
 │       ├── TASKS.md
 │       ├── EVIDENCE.md
 │       └── evidence/ (screenshot i browser snimak)
+│   └── specweek04/
+│       ├── PLAN.md
+│       └── TASKS.md
+│
+├── server/
+│   ├── .env.example
+│   ├── api.ts
+│   ├── httpSecurity.ts
+│   ├── provider.ts
+│   ├── service.ts
+│   ├── usage.ts
+│   └── server.ts
 │
 ├── src/
 │   ├── game.ts
@@ -179,7 +231,8 @@ RetroSnakeGame/
 ├── tests/
 │   ├── game.test.ts
 │   ├── gameConfig.test.ts
-│   └── highScore.test.ts
+│   ├── highScore.test.ts
+│   └── ai.test.ts
 │
 ├── e2e/
 │   └── game.spec.ts
@@ -193,6 +246,7 @@ RetroSnakeGame/
 
 * **`docs/`** — project specifications and documentation
 * **`specs/`** — development plans and verification evidence
+* **`server/`** — TypeScript API, Gemini provider integration, and private local usage report
 * **`src/`** — application source code
 * **`tests/`** — unit and integration tests
 * **`e2e/`** — browser end-to-end tests
@@ -201,11 +255,13 @@ RetroSnakeGame/
 
 * `game.ts` — core game logic: movement, collisions, food, and validation
 * `highScore.ts` — High Score localStorage helper
+* `usage.ts` — private local AI usage report and token aggregation
 * `main.ts` — rendering initialization and event listeners
 * `types.ts` — interfaces, types, and `GameConfig` contracts
 * `game.test.ts` — tests for movement, collision, and game-state logic
 * `gameConfig.test.ts` — configuration validation tests
 * `highScore.test.ts` — High Score persistence helper tests
+* `ai.test.ts` — AI reliability, security helper, and usage aggregation tests
 
 ---
 
@@ -214,7 +270,7 @@ RetroSnakeGame/
 Before every commit or merge, the complete verification pipeline can be run with:
 
 ```bash
-npm run typecheck && npm test
+npm run typecheck && npm test && npm run build
 ```
 
 The project should pass:

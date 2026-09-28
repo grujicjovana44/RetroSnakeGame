@@ -4,3 +4,4 @@ playwright-report
 test-results
 .DS_Store
 .env
+server/ai-usage.local.json

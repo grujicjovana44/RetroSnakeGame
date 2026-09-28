@@ -84,6 +84,7 @@ function boot(): void {
   let timerId: number | undefined;
   let gameStartedAt = Date.now();
   let foodCollected = 0;
+  let adviceSessionId: string | null = null;
 
   function stopLoop(): void {
     if (timerId !== undefined) {
@@ -322,6 +323,7 @@ function boot(): void {
     stopLoop();
     gameStartedAt = Date.now();
     foodCollected = 0;
+    adviceSessionId = null;
     if (adviceButton) adviceButton.hidden = true;
     if (advicePanel) advicePanel.hidden = true;
     const nextState = createInitialGameState(pendingConfig);
@@ -345,24 +347,27 @@ function boot(): void {
     if (adviceRecommendationEl) adviceRecommendationEl.textContent = "";
 
     try {
-      const sessionResponse = await fetch(`${BACKEND_URL}/api/game/session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          score: state.score,
-          durationSeconds: Math.max(0, Math.round((Date.now() - gameStartedAt) / 1000)),
-          collisions: state.collision ? 1 : 0,
-          foodCollected,
-        }),
-      });
-      if (!sessionResponse.ok) throw new Error("session-request-failed");
-      const session = (await sessionResponse.json()) as { sessionId?: string };
-      if (!session.sessionId) throw new Error("missing-session-id");
+      if (!adviceSessionId) {
+        const sessionResponse = await fetch(`${BACKEND_URL}/api/game/session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            score: state.score,
+            durationSeconds: Math.max(0, Math.round((Date.now() - gameStartedAt) / 1000)),
+            collisions: state.collision ? 1 : 0,
+            foodCollected,
+          }),
+        });
+        if (!sessionResponse.ok) throw new Error("session-request-failed");
+        const session = (await sessionResponse.json()) as { sessionId?: string };
+        if (!session.sessionId) throw new Error("missing-session-id");
+        adviceSessionId = session.sessionId;
+      }
 
       const adviceResponse = await fetch(`${BACKEND_URL}/api/ai/advice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: session.sessionId }),
+        body: JSON.stringify({ sessionId: adviceSessionId }),
       });
       const result = (await adviceResponse.json()) as {
         success: boolean;
