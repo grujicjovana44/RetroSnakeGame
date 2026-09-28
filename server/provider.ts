@@ -4,17 +4,50 @@ import {
   type GenerateContentResponse,
 } from "@google/genai";
 import { parseAdviceResponse, type AdviceResponse, type GameSummary } from "./api";
-import type { TokenUsage } from "./usage";
+import type { ProviderFailureReason, TokenUsage } from "./usage";
 
 export type StatsTool = (sessionId: string) => GameSummary | null;
 export type ProviderPhase = "initial_tool_call" | "final_response";
+export type ProviderPhaseRecorder = (phase: ProviderPhase) => void;
 export type TokenUsageRecorder = (usage: TokenUsage) => void;
+export const DEFAULT_GEMINI_MODEL_CHAIN = [
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+] as const;
+
+const GEMINI_MODEL_ORDER: ReadonlyMap<string, number> = new Map(
+  DEFAULT_GEMINI_MODEL_CHAIN.map((model, index) => [model, index]),
+);
+
+export function parseGeminiModelChain(value?: string): string[] {
+  const models = value?.trim()
+    ? value.split(",").map((model) => model.trim())
+    : [...DEFAULT_GEMINI_MODEL_CHAIN];
+  let previousIndex = -1;
+
+  for (const model of models) {
+    const index = GEMINI_MODEL_ORDER.get(model);
+    if (index === undefined || index <= previousIndex) {
+      throw new Error("GEMINI_MODEL_CHAIN contains an unsupported or out-of-order model.");
+    }
+    previousIndex = index;
+  }
+
+  if (models.length === 0) {
+    throw new Error("GEMINI_MODEL_CHAIN must contain at least one supported model.");
+  }
+  return models;
+}
 
 export class GeminiProviderError extends Error {
   public constructor(
     message: string,
     public readonly phase: ProviderPhase,
     public readonly status?: number,
+    public readonly failureReason?: ProviderFailureReason,
+    public readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = "GeminiProviderError";
@@ -27,6 +60,7 @@ export interface AdviceProvider {
     getStats: StatsTool,
     signal: AbortSignal,
     recordTokenUsage: TokenUsageRecorder,
+    recordPhase?: ProviderPhaseRecorder,
   ): Promise<unknown>;
 }
 
@@ -90,13 +124,39 @@ export class FakeAdviceProvider implements AdviceProvider {
 }
 
 const TOOL_NAME = "get_game_session_stats";
+const MAX_OUTPUT_TOKENS = 256;
+const SYSTEM_INSTRUCTION =
+  'Ti si AI analitičar za retro Snake igricu. Odgovaraš isključivo u validnom JSON formatu sa poljima "summary", "recommendation" i "category". Polje "category" mora biti tačno jedno od: "movement", "timing", "strategy", "general".';
+const ADVICE_RESPONSE_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string", minLength: 1, maxLength: 500 },
+    recommendation: { type: "string", minLength: 1, maxLength: 500 },
+    category: { type: "string", enum: ["movement", "timing", "strategy", "general"] },
+  },
+  required: ["summary", "recommendation", "category"],
+  additionalProperties: false,
+};
 
 export class GeminiAdviceProvider implements AdviceProvider {
   private readonly ai: GoogleGenAI;
   private readonly modelName: string;
+  private retryAfterMs?: number;
 
   public constructor(apiKey: string, modelName = "gemini-3.8-flash") {
-    this.ai = new GoogleGenAI({ apiKey });
+    this.ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        retryOptions: { attempts: 1 },
+        fetch: async (input, init) => {
+          const response = await fetch(input, init);
+          this.retryAfterMs = response.status === 429
+            ? parseRetryAfterMs(response.headers.get("retry-after"))
+            : undefined;
+          return response;
+        },
+      },
+    });
     this.modelName = modelName.replace(/^models\//, "");
   }
 
@@ -105,22 +165,19 @@ export class GeminiAdviceProvider implements AdviceProvider {
     getStats: StatsTool,
     signal: AbortSignal,
     recordTokenUsage: TokenUsageRecorder,
+    recordPhase?: ProviderPhaseRecorder,
   ): Promise<AdviceResponse> {
     let phase: ProviderPhase = "initial_tool_call";
-
-    console.log(`\n==================================================`);
-    console.log(`[GeminiProvider] POČETAK generisanja saveta`);
-    console.log(`[GeminiProvider] Sesija ID: ${sessionId}`);
-    console.log(`[GeminiProvider] Model koji se poziva: ${this.modelName}`);
-    console.log(`==================================================`);
+    recordPhase?.(phase);
+    this.retryAfterMs = undefined;
 
     try {
       const chat = this.ai.chats.create({
         model: this.modelName,
         config: {
           abortSignal: signal,
-          systemInstruction:
-            'Ti si AI analitičar za retro Snake igricu. Odgovaraš isključivo u validnom JSON formatu sa poljima "summary", "recommendation" i "category". Polje "category" mora biti tačno jedno od: "movement", "timing", "strategy", "general".',
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          systemInstruction: SYSTEM_INSTRUCTION,
           tools: [
             {
               functionDeclarations: [
@@ -149,7 +206,6 @@ export class GeminiAdviceProvider implements AdviceProvider {
         },
       });
 
-      console.log(`[GeminiProvider] Šaljem početni zahtev za poziv alata...`);
       const firstResult = await chat.sendMessage({
         message: `Pozovi alat ${TOOL_NAME} sa parametrom sessionId="${sessionId}". Nakon što dobiješ podatke, izanaliziraj ih i vrati rezultat striktno u traženom JSON formatu.`,
       });
@@ -161,29 +217,22 @@ export class GeminiAdviceProvider implements AdviceProvider {
       const toolCall = functionCallPart?.functionCall ?? firstResult.functionCalls?.[0];
 
       if (!toolCall || toolCall.name !== TOOL_NAME) {
-        console.error(`[GeminiProvider GREŠKA] Model NIJE vratio očekivani poziv funkcije '${TOOL_NAME}'.`);
-        console.error(`[GeminiProvider Sirovi Odgovor Modela]:\n`, JSON.stringify(firstResult, null, 2));
         throw new GeminiProviderError("missing-tool-call", phase);
       }
 
-      console.log(`[GeminiProvider] Model je uspešno zatražio poziv alata:`, JSON.stringify(toolCall));
-
       const requestedSessionId = getStringArgument(toolCall.args, "sessionId");
       if (requestedSessionId !== sessionId) {
-        console.error(`[GeminiProvider GREŠKA] Poklapanje sesije neuspešno! Traženo: ${requestedSessionId}, Očekivano: ${sessionId}`);
         throw new GeminiProviderError("tool-session-mismatch", phase);
       }
 
       const stats = getStats(requestedSessionId);
       if (!stats) {
-        console.error(`[GeminiProvider GREŠKA] Statistika sesije nije pronađena u lokalu za ID: ${requestedSessionId}`);
         throw new GeminiProviderError("session-not-found", phase);
       }
 
-      console.log(`[GeminiProvider] Sakupljena lokalna statistika:`, JSON.stringify(stats));
       phase = "final_response";
+      recordPhase?.(phase);
 
-      console.log(`[GeminiProvider] Šaljem dobijenu statistiku nazad modelu za finalnu analizu...`);
       const finalResult = await chat.sendMessage({
         message: [
           {
@@ -193,27 +242,18 @@ export class GeminiAdviceProvider implements AdviceProvider {
             },
           },
         ],
+        config: {
+          abortSignal: signal,
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          systemInstruction: SYSTEM_INSTRUCTION,
+          responseMimeType: "application/json",
+          responseJsonSchema: ADVICE_RESPONSE_JSON_SCHEMA,
+        },
       });
       recordResponseUsage(finalResult, recordTokenUsage);
 
-      console.log(`[GeminiProvider] Primljen finalni odgovor od modela. Parsiram JSON...`);
-      const parsedAdvice = parseFinalAdvice(finalResult);
-      console.log(`[GeminiProvider USPEH] AI Savet je uspešno izgenerisan:`, JSON.stringify(parsedAdvice));
-      return parsedAdvice;
-
+      return parseFinalAdvice(finalResult);
     } catch (error) {
-      console.error(`\n--------------------------------------------------`);
-      console.error(`[GeminiProvider DETALJI GREŠKE u faza: ${phase}]`);
-      if (error instanceof Error) {
-        console.error(`Naziv greške: ${error.name}`);
-        console.error(`Poruka greške: ${error.message}`);
-        console.error(`HTTP / API Status Kod:`, getProviderStatus(error));
-        console.error(`Stack trace:\n${error.stack}`);
-      } else {
-        console.error(`Nepoznati objekat greške:`, error);
-      }
-      console.error(`--------------------------------------------------\n`);
-
       if (error instanceof GeminiProviderError) {
         throw error;
       }
@@ -221,6 +261,8 @@ export class GeminiAdviceProvider implements AdviceProvider {
         isTransientGeminiError(error) ? "provider-unavailable" : "provider-error",
         phase,
         getProviderStatus(error),
+        undefined,
+        this.retryAfterMs,
       );
     }
   }
@@ -255,25 +297,40 @@ function recordResponseUsage(
 }
 
 function parseFinalAdvice(result: GenerateContentResponse): AdviceResponse {
-  const text = result.text ?? "";
-  let parsed: unknown;
+  return parseFinalAdviceText(result.text ?? "");
+}
 
+export function parseFinalAdviceText(text: string): AdviceResponse {
+  if (!text.trim()) {
+    throw new GeminiProviderError("malformed-output", "final_response", undefined, "empty-output");
+  }
+
+  let parsed: unknown;
   try {
-    const cleanedText = text.replace(/```json\s*|\s*```/g, "").trim();
-    parsed = JSON.parse(cleanedText);
-  } catch (jsonErr) {
-    console.error(`[GeminiProvider GREŠKA] Neuspešno parsiranje JSON teksta od strane AI-ja.`);
-    console.error(`[GeminiProvider Sirovi Tekst koji je AI poslao]:\n`, text);
-    throw new GeminiProviderError("malformed-output", "final_response");
+    parsed = JSON.parse(text.trim());
+  } catch {
+    throw new GeminiProviderError("malformed-output", "final_response", undefined, "invalid-json");
   }
 
   const advice = parseAdviceResponse(parsed);
   if (!advice) {
-    console.error(`[GeminiProvider GREŠKA] Dobijeni JSON ne odgovara očekivanoj strukturi (AdviceResponse).`);
-    console.error(`[GeminiProvider Dobijeni objekat]:`, parsed);
-    throw new GeminiProviderError("malformed-output", "final_response");
+    throw new GeminiProviderError("malformed-output", "final_response", undefined, "schema-mismatch");
   }
   return advice;
+}
+
+export function parseRetryAfterMs(value: string | null, nowMs = Date.now()): number | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.ceil(seconds * 1_000);
+  }
+
+  const retryAt = Date.parse(value);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - nowMs) : undefined;
 }
 
 function isTransientGeminiError(error: unknown): boolean {
@@ -282,10 +339,10 @@ function isTransientGeminiError(error: unknown): boolean {
   }
 
   const status = getProviderStatus(error);
+  if (status !== undefined) {
+    return status === 429 || status >= 500 || status === 408;
+  }
   return (
-    status === 429 ||
-    status === 503 ||
-    (status !== undefined && status >= 500) ||
     /timeout|timed out|network|fetch failed|unavailable|overloaded/i.test(error.message)
   );
 }

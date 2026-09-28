@@ -8,12 +8,26 @@ import {
   type GameSummary,
 } from "./api";
 import { GeminiProviderError, type AdviceProvider, type StatsTool } from "./provider";
-import { recordUsage, type TokenUsage, type UsageLog, type UsageLogEntry } from "./usage";
+import {
+  recordUsage,
+  type ProviderAttempt,
+  type TokenUsage,
+  type UsageLog,
+  type UsageLogEntry,
+} from "./usage";
 
 export type SessionStore = Map<string, GameSummary>;
+export type InFlightAdvice = {
+  promise: Promise<ServiceResult>;
+  controller: AbortController;
+  subscribers: number;
+  settled: boolean;
+};
 
 export type AdviceServiceOptions = {
   provider: AdviceProvider;
+  providerForModel?: (model: string) => AdviceProvider;
+  modelChain?: string[];
   sessions: SessionStore;
   timeoutMs?: number;
   sleep?: (milliseconds: number) => Promise<void>;
@@ -21,13 +35,15 @@ export type AdviceServiceOptions = {
   providerName?: "gemini" | "fake";
   modelName?: string;
   adviceCache?: Map<string, AdviceResponse>;
-  inFlightAdvice?: Map<string, Promise<ServiceResult>>;
+  inFlightAdvice?: Map<string, InFlightAdvice>;
+  signal?: AbortSignal;
 };
 
 export type ServiceResult = {
   statusCode: number;
   body: AdviceApiResponse;
   attempts: number;
+  fallbackUsed?: boolean;
 };
 
 const MAX_SESSIONS = 500;
@@ -70,34 +86,50 @@ export async function requestAdvice(
     return { statusCode: 200, body: { success: true, advice: cachedAdvice }, attempts: 0 };
   }
 
-  const inFlight = options.inFlightAdvice?.get(sessionId);
-  if (inFlight) {
-    return inFlight;
+  if (options.signal?.aborted) {
+    return cancelledResult();
   }
 
-  const resultPromise = generateAdvice(sessionId, options, startedAt);
-  options.inFlightAdvice?.set(sessionId, resultPromise);
-  try {
-    const result = await resultPromise;
-    if (result.body.success && options.adviceCache) {
-      if (options.adviceCache.size >= MAX_SESSIONS) {
-        const oldestSessionId = options.adviceCache.keys().next().value;
-        if (oldestSessionId) {
-          options.adviceCache.delete(oldestSessionId);
-        }
-      }
-      options.adviceCache.set(sessionId, result.body.advice);
-    }
-    return result;
-  } finally {
-    options.inFlightAdvice?.delete(sessionId);
+  let flight = options.inFlightAdvice?.get(sessionId);
+  if (flight?.controller.signal.aborted) {
+    flight = undefined;
   }
+  if (!flight) {
+    const controller = new AbortController();
+    flight = {
+      promise: generateAdvice(sessionId, options, startedAt, controller.signal),
+      controller,
+      subscribers: 0,
+      settled: false,
+    };
+    options.inFlightAdvice?.set(sessionId, flight);
+    const createdFlight = flight;
+    void createdFlight.promise.then((result) => {
+      if (result.body.success && options.adviceCache) {
+        if (options.adviceCache.size >= MAX_SESSIONS) {
+          const oldestSessionId = options.adviceCache.keys().next().value;
+          if (oldestSessionId) {
+            options.adviceCache.delete(oldestSessionId);
+          }
+        }
+        options.adviceCache.set(sessionId, result.body.advice);
+      }
+    }, () => undefined).finally(() => {
+      createdFlight.settled = true;
+      if (options.inFlightAdvice?.get(sessionId) === createdFlight) {
+        options.inFlightAdvice.delete(sessionId);
+      }
+    });
+  }
+
+  return waitForFlight(flight, options.signal);
 }
 
 async function generateAdvice(
   sessionId: string,
   options: AdviceServiceOptions,
   startedAt: number,
+  signal: AbortSignal,
 ): Promise<ServiceResult> {
   const getStats: StatsTool = (toolSessionId) => {
     if (toolSessionId !== sessionId) {
@@ -106,96 +138,243 @@ async function generateAdvice(
     return options.sessions.get(toolSessionId) ?? null;
   };
 
-  const maxAttempts = 2;
+  const modelChain = options.modelChain?.length
+    ? options.modelChain
+    : [options.modelName ?? "test"];
+  const maxAttemptsPerModel = 2;
   const timeoutMs = Math.max(1, options.timeoutMs ?? 15_000);
   const deadline = startedAt + timeoutMs;
-  const retryDelayMs = Math.min(1_000, Math.max(1, Math.floor(timeoutMs / 4)));
-  const firstAttemptTimeoutMs = Math.max(1, timeoutMs - retryDelayMs - 4_000);
+  const minimumModelAttemptMs = timeoutMs < 1_000
+    ? timeoutMs / (modelChain.length * maxAttemptsPerModel)
+    : Math.min(3_000, timeoutMs / (modelChain.length + 1));
+  const minimumRetryBudgetMs = timeoutMs < 1_000 ? 1 : minimumModelAttemptMs;
   const sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   let attempts = 0;
+  let fallbackUsed = false;
+  let selectedModel = modelChain[0];
   let tokenUsage: TokenUsage = {};
   let hasTokenUsage = false;
+  const providerAttempts: ProviderAttempt[] = [];
 
-  while (attempts < maxAttempts) {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) {
-      recordUsage(options.usageLog ?? [], createUsageEntry(options, {
-        status: "timeout",
-        attempts,
-        latencyMs: Date.now() - startedAt,
-        sessionId,
-        tokenUsage: hasTokenUsage ? tokenUsage : undefined,
-      }));
-      return { statusCode: 502, body: { success: false, message: SAFE_ERROR_MESSAGE }, attempts };
-    }
+  for (let modelIndex = 0; modelIndex < modelChain.length; modelIndex += 1) {
+    const currentModel = modelChain[modelIndex];
+    const provider = options.providerForModel?.(currentModel) ?? options.provider;
 
-    attempts += 1;
-    const controller = new AbortController();
-    const attemptTimeoutMs = attempts === 1
-      ? Math.min(remainingMs, firstAttemptTimeoutMs)
-      : remainingMs;
-    try {
-      const advice = await withTimeout(
-        options.provider.generateAdvice(sessionId, getStats, controller.signal, (usage) => {
-          tokenUsage = mergeTokenUsage(tokenUsage, usage);
-          hasTokenUsage = true;
-        }),
-        attemptTimeoutMs,
-        controller,
-      );
-      const parsed = parseAdviceResponse(advice);
-      if (!parsed) {
+    for (let modelAttempt = 0; modelAttempt < maxAttemptsPerModel; modelAttempt += 1) {
+      if (signal.aborted) {
+        return finishFailure("cancelled");
+      }
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        return finishFailure("timeout");
+      }
+
+      const remainingFallbackModels = modelChain.length - modelIndex - 1;
+      const fallbackReserveSlackMs = Math.min(250, timeoutMs * 0.1);
+      const fallbackReserveMs = remainingFallbackModels *
+        (minimumModelAttemptMs + fallbackReserveSlackMs);
+      const currentModelBudgetMs = remainingMs - fallbackReserveMs;
+      if (currentModelBudgetMs <= 1 ||
+          (modelAttempt === 0 && currentModelBudgetMs < minimumModelAttemptMs)) {
+        return finishFailure("timeout");
+      }
+
+      const attemptTimeoutMs = modelIndex === 0 && modelAttempt === 0
+        ? Math.max(minimumModelAttemptMs, Math.floor(currentModelBudgetMs / maxAttemptsPerModel))
+        : currentModelBudgetMs;
+      selectedModel = currentModel;
+      if (modelIndex > 0) {
+        fallbackUsed = true;
+      }
+      attempts += 1;
+      const controller = new AbortController();
+      let attemptPhase: "initial_tool_call" | "final_response" = "initial_tool_call";
+      const abortAttempt = () => controller.abort();
+      signal.addEventListener("abort", abortAttempt, { once: true });
+      if (signal.aborted) {
+        abortAttempt();
+      }
+      const attemptStartedAt = Date.now();
+      const attemptKind = attempts === 1
+        ? "initial"
+        : modelAttempt > 0
+          ? "retry"
+          : "fallback";
+
+      try {
+        const advice = await withTimeout(
+          provider.generateAdvice(sessionId, getStats, controller.signal, (usage) => {
+            tokenUsage = mergeTokenUsage(tokenUsage, usage);
+            hasTokenUsage = true;
+          }, (phase) => {
+            attemptPhase = phase;
+          }),
+          attemptTimeoutMs,
+          controller,
+        );
+        const parsed = parseAdviceResponse(advice);
+        if (!parsed) {
+          providerAttempts.push({
+            model: selectedModel,
+            attemptKind,
+            phase: "final_response",
+            status: "malformed_output",
+            latencyMs: Date.now() - attemptStartedAt,
+          });
+          return finishFailure("malformed_output", "final_response");
+        }
+
+        providerAttempts.push({
+          model: selectedModel,
+          attemptKind,
+          phase: "final_response",
+          status: "success",
+          latencyMs: Date.now() - attemptStartedAt,
+        });
         recordUsage(options.usageLog ?? [], createUsageEntry(options, {
-          status: "malformed_output",
+          model: selectedModel,
+          status: "success",
           phase: "final_response",
           attempts,
           latencyMs: Date.now() - startedAt,
-          sessionId,
+          fallbackUsed,
+          providerAttempts,
           tokenUsage: hasTokenUsage ? tokenUsage : undefined,
         }));
-        return { statusCode: 502, body: { success: false, message: SAFE_ERROR_MESSAGE }, attempts };
-      }
-      recordUsage(options.usageLog ?? [], createUsageEntry(options, {
-        status: "success",
-        phase: "final_response",
-        attempts,
-        latencyMs: Date.now() - startedAt,
-        sessionId,
-        tokenUsage: hasTokenUsage ? tokenUsage : undefined,
-      }));
-      return { statusCode: 200, body: { success: true, advice: parsed }, attempts };
-    } catch (error) {
-      if (!isTransientError(error) || attempts === maxAttempts) {
-        recordUsage(options.usageLog ?? [], createUsageEntry(options, {
-          status: getFailureStatus(error),
-          phase: getErrorPhase(error),
-          providerStatus: getProviderStatus(error),
+        return {
+          statusCode: 200,
+          body: { success: true, advice: parsed },
           attempts,
-          latencyMs: Date.now() - startedAt,
-          sessionId,
-          tokenUsage: hasTokenUsage ? tokenUsage : undefined,
-        }));
-        return { statusCode: 502, body: { success: false, message: SAFE_ERROR_MESSAGE }, attempts };
+          fallbackUsed,
+        };
+      } catch (error) {
+        const failureStatus = getFailureStatus(error);
+        const providerStatus = getProviderStatus(error);
+        const failurePhase = getErrorPhase(error) ?? attemptPhase;
+        if (signal.aborted) {
+          providerAttempts.push({
+            model: selectedModel,
+            attemptKind,
+            phase: failurePhase,
+            providerStatus,
+            status: "cancelled",
+            latencyMs: Date.now() - attemptStartedAt,
+          });
+          return finishFailure("cancelled", failurePhase, providerStatus);
+        }
+        providerAttempts.push({
+          model: selectedModel,
+          attemptKind,
+          phase: failurePhase,
+          providerStatus,
+          failureReason: getFailureReason(error),
+          status: failureStatus,
+          latencyMs: Date.now() - attemptStartedAt,
+        });
+
+        const retryOnSameModel = isRetryableError(error) && modelAttempt === 0;
+        if (retryOnSameModel) {
+          const jitteredDelayMs = 1_000 + Math.floor(Math.random() * 1_001);
+          const retryDelayMs = getProviderStatus(error) === 429
+            ? getRetryAfterMs(error) ?? jitteredDelayMs
+            : Math.min(jitteredDelayMs, Math.floor(timeoutMs / 10));
+          const remainingBeforeRetryMs = deadline - Date.now();
+          const retryBudgetMs = remainingBeforeRetryMs - retryDelayMs - fallbackReserveMs;
+          if (retryBudgetMs >= minimumRetryBudgetMs) {
+            await sleep(retryDelayMs);
+            continue;
+          }
+        }
+
+        if (remainingFallbackModels > 0 && isFallbackEligible(error)) {
+          break;
+        }
+
+        return finishFailure(failureStatus, failurePhase, providerStatus);
+      } finally {
+        signal.removeEventListener("abort", abortAttempt);
       }
-      const remainingBeforeRetry = deadline - Date.now();
-      if (remainingBeforeRetry <= 1) {
-        continue;
-      }
-      await sleep(Math.min(retryDelayMs, remainingBeforeRetry - 1));
     }
   }
 
-  return { statusCode: 502, body: { success: false, message: SAFE_ERROR_MESSAGE }, attempts };
+  return finishFailure("provider_error");
+
+  function finishFailure(
+    status: UsageLogEntry["status"],
+    phase?: UsageLogEntry["phase"],
+    providerStatus?: number,
+  ): ServiceResult {
+    recordUsage(options.usageLog ?? [], createUsageEntry(options, {
+      model: selectedModel,
+      status,
+      phase,
+      providerStatus,
+      attempts,
+      latencyMs: Date.now() - startedAt,
+      fallbackUsed,
+      providerAttempts,
+      tokenUsage: hasTokenUsage ? tokenUsage : undefined,
+    }));
+    return {
+      statusCode: 502,
+      body: { success: false, message: SAFE_ERROR_MESSAGE },
+      attempts,
+      fallbackUsed,
+    };
+  }
+}
+
+async function waitForFlight(
+  flight: InFlightAdvice,
+  signal?: AbortSignal,
+): Promise<ServiceResult> {
+  if (signal?.aborted) {
+    return cancelledResult();
+  }
+
+  flight.subscribers += 1;
+  let abortHandler: (() => void) | undefined;
+  try {
+    if (!signal) {
+      return await flight.promise;
+    }
+
+    const aborted = new Promise<ServiceResult>((resolve) => {
+      abortHandler = () => resolve(cancelledResult());
+      signal.addEventListener("abort", abortHandler, { once: true });
+      if (signal.aborted) {
+        abortHandler();
+      }
+    });
+    return await Promise.race([flight.promise, aborted]);
+  } finally {
+    if (abortHandler) {
+      signal?.removeEventListener("abort", abortHandler);
+    }
+    flight.subscribers -= 1;
+    if (flight.subscribers === 0 && !flight.settled) {
+      flight.controller.abort();
+      await flight.promise.catch(() => undefined);
+    }
+  }
+}
+
+function cancelledResult(): ServiceResult {
+  return {
+    statusCode: 499,
+    body: { success: false, message: SAFE_ERROR_MESSAGE },
+    attempts: 0,
+  };
 }
 
 function createUsageEntry(
   options: AdviceServiceOptions,
-  values: Omit<UsageLogEntry, "operation" | "provider" | "model">,
+  values: Omit<UsageLogEntry, "operation" | "provider" | "model"> & { model?: string },
 ): UsageLogEntry {
   return {
     operation: "ai.advice",
     provider: options.providerName ?? "fake",
-    model: options.modelName ?? "test",
+    model: values.model ?? options.modelName ?? "test",
     ...values,
   };
 }
@@ -216,6 +395,8 @@ function addOptionalNumbers(left: number | undefined, right: number | undefined)
 
 function getFailureStatus(error: unknown): UsageLogEntry["status"] {
   if (!(error instanceof Error)) return "provider_error";
+  if (getProviderStatus(error) === 429) return "rate_limited";
+  if (getProviderStatus(error) === 408) return "timeout";
   if (error.message === "provider-timeout") return "timeout";
   if (error.message === "malformed-output") return "malformed_output";
   if (error.message === "tool-session-mismatch" || error.message === "session-not-found") {
@@ -224,8 +405,22 @@ function getFailureStatus(error: unknown): UsageLogEntry["status"] {
   return "provider_error";
 }
 
-function isTransientError(error: unknown): boolean {
-  return error instanceof Error && ["provider-timeout", "provider-unavailable", "network-error"].includes(error.message);
+function isRetryableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const status = getProviderStatus(error);
+  if (status !== undefined) {
+    return status === 408 || status === 429 || status >= 500;
+  }
+  return ["provider-timeout", "provider-unavailable", "network-error"].includes(error.message);
+}
+
+function isFallbackEligible(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const status = getProviderStatus(error);
+  if (status !== undefined) {
+    return status === 408 || status === 500 || status === 502 || status === 503;
+  }
+  return ["provider-timeout", "provider-unavailable", "network-error"].includes(error.message);
 }
 
 function getErrorPhase(error: unknown): "initial_tool_call" | "final_response" | undefined {
@@ -234,6 +429,14 @@ function getErrorPhase(error: unknown): "initial_tool_call" | "final_response" |
 
 function getProviderStatus(error: unknown): number | undefined {
   return error instanceof GeminiProviderError ? error.status : undefined;
+}
+
+function getRetryAfterMs(error: unknown): number | undefined {
+  return error instanceof GeminiProviderError ? error.retryAfterMs : undefined;
+}
+
+function getFailureReason(error: unknown): GeminiProviderError["failureReason"] {
+  return error instanceof GeminiProviderError ? error.failureReason : undefined;
 }
 
 async function withTimeout<T>(

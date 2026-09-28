@@ -64,17 +64,31 @@ pokretanja. Usage izveštaj ne pravi dodatni provider poziv. Jedan uspešan AI
 Advice rezultat se ponovo koristi za istu game session.
 
 ## Koji model/provider koristi?
-Gemini `gemini-3.8-flash`, koji je izabran nakon provere dostupnih modela.
+Backend koristi konačnu, fiksnu Gemini allowlistu ovim redosledom:
+`gemini-3.8-flash` → `gemini-3.7-flash` → `gemini-3.6-flash` →
+`gemini-3.5-flash`. `GEMINI_MODEL_CHAIN` u backend environment-u može da
+izabere samo neprazan, uređeni podskup ove allowliste. Browser ne bira model.
 Scenario je kratka analiza četiri numeričke statistike i jednog read-only tool
-round-trip-a. Izbor i ograničenja cene dokumentovani su u
-`AI_PROVIDER_CONTRACT.md`; uspešan live poziv sa izabranim modelom se ne smatra
-potvrđenim dok nije zabeležen u evidence.
+round-trip-a. Live generisanje/function calling za svaki model mora zasebno da
+se dokaže; models.list i fake-provider testovi nisu live dokaz.
 
 ## Reliability i zaštita
 
 - Ukupni provider flow ima rok od 15 sekundi, uključujući retry wait.
-- Maksimum su dva pokušaja; samo privremene provider/network greške se
-  ponavljaju. Nevalidan input i malformed output se ne ponavljaju.
+- Ako se HTTP klijent diskonektuje, backend prosleđuje abort provider pozivu. Istovremeni zahtevi za isti session dele jedan provider poziv; on se otkazuje tek kada se svi klijenti odjave. Otkazivanje se beleži kao `cancelled`.
+- Maksimum su dva pokušaja po modelu, unutar jednog ukupnog roka od 15 sekundi.
+  Transient 408/5xx/network/timeout može jednom da se ponovi; 429 može jednom
+  da se ponovi samo na istom modelu, bez model fallback-a.
+- Fallback na sledeći model dozvoljen je nakon iscrpljenog transient pokušaja
+  (500/502/503/408, mrežna greška ili timeout). Ne radi se za 400, 401/403,
+  429, safety/policy odbijanje, malformed output, missing tool-call ili
+  session mismatch. 404 ostaje safe failure dok capability/model dostupnost
+  nije potvrđena.
+- Svaki Gemini odgovor ima `maxOutputTokens: 256`. Token metadata se beleže
+  kada ih provider vrati.
+- Interna telemetry beleži samo model, attempt kind, fazu, status, provider
+  status, latenciju i token metadata; ne beleži session ID, tool argumente,
+  statistike, prompt, raw response ili stack trace.
 - Pri isteku roka backend otkazuje lokalni SDK zahtev preko `AbortSignal`.
   Provider može i dalje naplatiti zahtev koji je već prihvatio.
 - Browser origins su ograničeni na backend allowlist, a advice endpoint ima
@@ -95,7 +109,8 @@ nikad raw grešku, stack trace ili provider detalje.
 - AI Hint tokom aktivne partije (real-time) — nije ovaj feature.
 - Multi-turn razgovor sa modelom o partiji.
 - Poređenje sa istorijom više partija (samo poslednja partija).
-- Fallback provider/model (optional/stretch, ne Core).
+- Gemma ili drugi provider/adaptor; zahteva zasebnu capability granu i isti
+  dokazani AdviceResponse ugovor.
 - Bilo kakav write-access alat — `get_game_session_stats` je striktno
   read-only.
 - Cloud/database usage storage, financial cost accounting and deployment.
@@ -108,4 +123,7 @@ nikad raw grešku, stack trace ili provider detalje.
 - Runtime schema validacija se demonstrira i za validan i za nevalidan
   primer izlaza modela.
 - Testovi pokrivaju ukupan timeout/cancellation, bounded retry, duple zahteve,
-  usage agregaciju i privatnost lokalnog izveštaja.
+  usage agregaciju i privatnost lokalnog izveštaja, 3.8→3.7 i 3.8→3.7→3.6
+  failover, iscrpljenje lanca i ne-fallback za auth/quota/policy/malformed i
+  tool-session mismatch slučajeve. Provider izlaz mora biti jedan potpun JSON
+  objekat; code fence ili tekst izvan objekta odbacuje se kao malformed.

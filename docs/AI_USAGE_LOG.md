@@ -54,6 +54,24 @@ team verifies current provider pricing.
 	tier-specific and must be checked in AI Studio. No successful live advice
 	call has been recorded.
 
+## Reliability follow-up — 2026-09-28
+
+The approved mentor-feedback follow-up added the ordered backend model
+allowlist `gemini-3.8-flash` → `gemini-3.7-flash` → `gemini-3.6-flash` →
+`gemini-3.5-flash`, bounded retry/fallback under the existing 15-second
+deadline, a 256-token response cap, and sanitized per-attempt telemetry.
+Automated fake-provider coverage proves the fallback routing and safe failure
+policy only; it does not prove any listed model is available to this API
+account. A controlled live two-step tool-call smoke result must be recorded
+separately in `EVIDENCE_W04.md` before naming a live-success model.
+
+The bounded live capability probe on 2026-09-28 authenticated `models.list`
+and found all four IDs in the account listing, but single minimal generation
+attempts returned 503 for 3.8/3.7, an empty/unusable response for 3.6, and a
+network/timeout result for 3.5. The same two-step tool flow was therefore not
+run. Live advice and live fallback remain unverified; no raw prompt, response,
+secret, session ID, or stack trace was retained.
+
 ## Record scope
 
 This log records the AI-assisted follow-up work reflected in commit

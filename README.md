@@ -57,8 +57,11 @@ Immediate reversal into the opposite direction is prevented, avoiding accidental
 
 After Game Over, the player can request a short structured analysis of the
 completed game. The TypeScript backend validates game data, calls Gemini using
-the configured `gemini-3.8-flash` model, validates the result, and returns a
-safe response. The API key belongs only in the backend environment.
+the backend-only ordered allowlist `gemini-3.8-flash` → `gemini-3.7-flash` →
+`gemini-3.6-flash` → `gemini-3.5-flash`, validates the result, and returns a
+safe response. The API key and optional ordered-subset `GEMINI_MODEL_CHAIN`
+configuration belong only in the backend environment. Live model availability
+is not implied by the fake-provider tests.
 
 Token usage is not shown in the game. The backend writes request counts,
 outcomes, latency, model, timestamp, and available prompt/output/total token
@@ -111,9 +114,11 @@ npm install
 ### 3. Configure the backend
 
 Copy `server/.env.example` to `server/.env` and set `GEMINI_API_KEY` there if
-you want to use live AI Advice. Never place the key in frontend code or commit
-the `.env` file. The game can still run without a key; live advice will return
-the safe unavailable message.
+you want to use live AI Advice. The example config contains the default
+`GEMINI_MODEL_CHAIN`; it accepts only the fixed ordered allowlist or an ordered
+subset. Never place the key in frontend code or commit the `.env` file. The
+game can still run without a key; live advice will return the safe unavailable
+message.
 
 ### 4. Start the backend and frontend
 

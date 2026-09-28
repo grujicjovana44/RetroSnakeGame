@@ -2,20 +2,19 @@
 
 ```
 Provider: Gemini
-Model: gemini-3.8-flash (potvrđeno preko ListModels poziva na sopstveni
-       API key, 27.09.2026 — stabilna verzija, ne "-preview" ni "-latest")
+Model chain (backend-only allowlist, ordered):
+  gemini-3.8-flash → gemini-3.7-flash → gemini-3.6-flash → gemini-3.5-flash
+Configuration: GEMINI_MODEL_CHAIN in server/.env; it may contain only a
+  non-empty ordered subset of the fixed allowlist. The browser cannot select
+  a model. Current live availability/function-calling capability for this
+  chain is unverified until each candidate passes the documented smoke flow.
 
 Zašto je ovaj model dovoljan:
-  Tim je izabrao eksplicitni gemini-3.8-flash ID nakon provere dostupnosti na
-  svom API nalogu. Kratka analiza četiri numerička polja i jedan read-only
-  tool round-trip ne zahtevaju najjači model. Provera cena 2026-09-28 našla je
-  jeftiniji `gemini-3.1-flash-lite` (paid tier: $0.25/M input, $1.50/M output;
-  `gemini-3.8-flash`: $0.75/M i $3.75/M do 2026-12-31). `gemini-3.1-flash-lite`
-  je podržan na nalogu i podržava function calling, ali njegov exploratory
-  advice-flow test takođe je dobio provider 503. Zato nije zamenio trenutno
-  izabrani model. Cene i tier limiti se menjaju; proveriti zvaničnu pricing
-  stranicu i AI Studio limit pre produkcionog korišćenja.
-  Fiksni model ID izbegava automatsko menjanje ponašanja preko latest alias-a.
+  Lanac daje ograničen failover kada izabrani model privremeno nije dostupan.
+  Samo članstvo u models.list nije dokaz za generateContent ili function
+  calling. Ne dodavati preview/latest/lite varijante bez eksplicitnog testa i
+  ažurirane allowliste. Pre produkcionog korišćenja proveriti aktuelnu cenu i
+  tier limite; ovaj contract ne tvrdi da je neki model najjeftiniji.
 
 Input (function/tool):
   Tool name: get_game_session_stats
@@ -32,31 +31,42 @@ Function calling:
   Backend proverava ime alata, sessionId i raspoloživost statistike pre nego
   što vrati tool rezultat modelu.
 
+Generation limits:
+  maxOutputTokens: 256 on both provider responses. Token metadata
+  (promptTokenCount, candidatesTokenCount, totalTokenCount) se čuva kada je
+  dostupna; 503 se ne tumači kao token-budget problem.
+
 Output (finalni odgovor modela, ka korisniku):
   type AdviceResponse = {
     summary: string;
     recommendation: string;
     category: "movement" | "timing" | "strategy" | "general";
   }
+  Provider text mora biti jedan potpun JSON objekat. Code fence, uvodni ili
+  završni tekst i dodatni JSON sadržaj odbacuju se kao malformed output.
 
 Timeout:
   Ukupno 15s od početka flow-a, uključujući retry čekanje. Prvi pokušaj dobija
   deo budžeta koji ostavlja vreme za bounded retry, drugi koristi preostalo
   vreme. AbortController signal se šalje kroz Gemini SDK. SDK cancellation je
   klijentski prekid i ne garantuje da provider neće naplatiti već prihvaćen
-  zahtev. Timeout vraća safe error.
+  zahtev. Prekid HTTP veze takođe abortuje provider signal. Istovremeni zahtevi
+  za istu sesiju dele provider poziv, koji se abortuje tek kada se svi klijenti
+  odjave. Cancellation se beleži kao `cancelled`; timeout vraća safe error.
 
-Retry policy:
-  Najviše 2 pokušaja i jedan backoff od 1s pri standardnom 15s roku.
-  RETRY IMA SMISLA za: mrežnu grešku, provider 5xx/unavailable, timeout.
-  RETRY NEMA SMISLA za: nevalidan lokalni input, nevalidan tool-call
-  argument (npr. sessionId mismatch), malformisan izlaz modela — ove greške
-  se neće promeniti ponovnim pokušajem, pa se odmah vraća safe error bez
-  trošenja dodatnog poziva.
-
-Fallback:
-  Nema fallback model/provider u Core-u (optional/stretch po zadatku). Ako
-  Gemini poziv konačno ne uspe posle retry-ja -> safe error korisniku.
+Retry and fallback policy:
+  Ukupni deadline je 15s za ceo lanac. Svaki model ima najviše 2 pokušaja;
+  drugi pokušaj koristi jittered backoff od 1–1,5s pri roku od 15s
+  (proporcionalno kraći za kraći test/override deadline). Nema paralelnih modela.
+  Retry se radi za provider 408/429/5xx, timeout i mrežne greške. 429 se
+  ponavlja najviše jednom na istom modelu, ali ne pokreće fallback.
+  Posle dva transient pokušaja, fallback na sledeći allowlisted model dozvoljen
+  je za 408, 500, 502, 503, timeout ili mrežnu grešku. Lanac se izvršava
+  sekvencijalno i završava safe error-om kada se iscrpi ili istekne deadline.
+  400, 401/403, 404, safety/policy odbijanje, malformed output, missing tool
+  call i tool-session mismatch ne pokreću fallback. Za 404 se prvo mora
+  potvrditi tačan model ID i podržana metoda izvan korisničkog zahteva.
+  Retry se ne radi za nevalidan lokalni input ili malformed/tool output.
 
 Secrets:
   GEMINI_API_KEY isključivo u backend environment konfiguraciji (.env /
@@ -73,6 +83,7 @@ Validation:
   3. Finalni odgovor modela — runtime schema provera (npr. zod) protiv
      AdviceResponse. Ne prolazi -> tretira se kao malformed output, NIKAD
      kao success, korisniku ide safe fallback poruka.
+      Tekst izvan jednog potpunog JSON objekta nije dozvoljen.
 
 Abuse and retention controls:
   CORS prihvata samo origin-e iz FRONTEND_ORIGINS (podrazumevano localhost i
@@ -101,16 +112,24 @@ User-facing failure:
   "operation": "ai.advice",
   "provider": "gemini",
   "model": "gemini-3.8-flash",
-  "status": "success | timeout | provider_error | invalid_input | malformed_output",
+  "status": "success | timeout | provider_error | invalid_input | malformed_output | tool_error | rate_limited | cancelled",
   "attempts": 1,
   "latencyMs": 0,
+  "fallbackUsed": false,
+  "providerAttempts": [{
+    "model": "gemini-3.8-flash",
+    "attemptKind": "initial | retry | fallback",
+    "phase": "initial_tool_call | final_response",
+    "providerStatus": 503,
+    "status": "provider_error",
+    "latencyMs": 0
+  }],
   "timestamp": "2026-09-27T17:00:00.000Z",
   "tokenUsage": { "promptTokens": 55, "outputTokens": 21, "totalTokens": 76 }
 }
 ```
-In-memory log može povezati zapis sa session ID-em radi dijagnostike, ali
-lokalni report ga izostavlja. **Trenutna implementacija ne ispunjava ovaj
-console-log cilj:** `server/provider.ts` trenutno ispisuje session ID, tool
-arguments, stats, parsed advice, raw provider response u jednoj error grani,
-kao i raw error message/stack. Ne deliti konzolne logove dok se debug ispisi ne
-uklone ili sanitizuju. API key nije namerno ispisan.
+Provider i request logovi ne ispisuju session ID, tool arguments, game stats,
+prompt, raw response, raw provider error ili stack trace. Provider attempt
+telemetry isključivo sadrži model, attempt kind, fazu, status, provider status,
+latenciju i dostupne token metadata. Lokalni persisted report dodatno izostavlja
+session ID.

@@ -1,8 +1,8 @@
 import "dotenv/config";
 import dotenv from "dotenv";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createSession, requestAdvice, type SessionStore } from "./service";
-import { GeminiAdviceProvider } from "./provider";
+import { createSession, requestAdvice, type InFlightAdvice, type SessionStore } from "./service";
+import { GeminiAdviceProvider, parseGeminiModelChain } from "./provider";
 import { loadUsageLog, persistUsageLog, recordUsage, type UsageLog } from "./usage";
 import { applyCorsHeaders, createRateLimiter, parseAllowedOrigins } from "./httpSecurity";
 
@@ -15,14 +15,16 @@ const sessions: SessionStore = new Map();
 const usageFile = new URL("./ai-usage.local.json", import.meta.url);
 const usageLog: UsageLog = await loadUsageLog(usageFile).catch(() => []);
 const adviceCache = new Map<string, import("./api").AdviceResponse>();
-const inFlightAdvice = new Map<string, ReturnType<typeof requestAdvice>>();
-const MODEL_NAME = "gemini-3.8-flash";
+const inFlightAdvice = new Map<string, InFlightAdvice>();
+const MODEL_CHAIN = parseGeminiModelChain(process.env.GEMINI_MODEL_CHAIN);
+const MODEL_NAME = MODEL_CHAIN[0];
 const allowedOrigins = parseAllowedOrigins(process.env.FRONTEND_ORIGINS);
 const allowAdviceRequest = createRateLimiter(10, 60_000);
 
-const provider = process.env.GEMINI_API_KEY
-  ? new GeminiAdviceProvider(process.env.GEMINI_API_KEY, MODEL_NAME)
-  : null;
+const createProvider = process.env.GEMINI_API_KEY
+  ? (modelName: string) => new GeminiAdviceProvider(process.env.GEMINI_API_KEY!, modelName)
+  : undefined;
+const provider = createProvider?.(MODEL_NAME) ?? null;
 
 async function persistUsageSafely(): Promise<void> {
   try {
@@ -33,6 +35,9 @@ async function persistUsageSafely(): Promise<void> {
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
+  if (response.destroyed) {
+    return;
+  }
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.writeHead(statusCode);
   response.end(JSON.stringify(body));
@@ -57,6 +62,14 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
 }
 
 async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  const clientAbortController = new AbortController();
+  request.once("aborted", () => clientAbortController.abort());
+  response.once("close", () => {
+    if (!response.writableEnded) {
+      clientAbortController.abort();
+    }
+  });
+
   if (request.method === "OPTIONS") {
     if (!applyCorsHeaders(request, response, allowedOrigins)) {
       sendJson(response, 403, { success: false, message: "Origin nije dozvoljen." });
@@ -126,8 +139,11 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
         usageLog,
         providerName: "gemini",
         modelName: MODEL_NAME,
+        modelChain: MODEL_CHAIN,
+        providerForModel: createProvider,
         adviceCache,
         inFlightAdvice,
+        signal: clientAbortController.signal,
         timeoutMs: 15_000,
       });
       await persistUsageSafely();
@@ -141,6 +157,8 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
           providerStatus: usage.providerStatus,
           attempts: usage.attempts,
           latencyMs: usage.latencyMs,
+          fallbackUsed: usage.fallbackUsed ?? false,
+          providerAttempts: usage.providerAttempts,
           tokenUsage: usage.tokenUsage,
         }));
       }

@@ -8,7 +8,20 @@ export type UsageStatus =
   | "invalid_input"
   | "malformed_output"
   | "tool_error"
-  | "rate_limited";
+  | "rate_limited"
+  | "cancelled";
+
+export type ProviderAttemptKind = "initial" | "retry" | "fallback";
+export type ProviderFailureReason = "empty-output" | "invalid-json" | "schema-mismatch";
+export type ProviderAttempt = {
+  model: string;
+  attemptKind: ProviderAttemptKind;
+  phase?: "initial_tool_call" | "final_response";
+  providerStatus?: number;
+  failureReason?: ProviderFailureReason;
+  status: UsageStatus;
+  latencyMs: number;
+};
 
 export type TokenUsage = {
   promptTokens?: number;
@@ -28,6 +41,8 @@ export type UsageLogEntry = {
   timestamp?: string;
   tokenUsage?: TokenUsage;
   sessionId?: string;
+  fallbackUsed?: boolean;
+  providerAttempts?: ProviderAttempt[];
 };
 
 export type UsageLog = UsageLogEntry[];
@@ -62,6 +77,25 @@ const tokenUsageSchema = z.object({
 const persistedEntrySchema = z.object({
   operation: z.literal("ai.advice"),
   phase: z.enum(["initial_tool_call", "final_response"]).optional(),
+  fallbackUsed: z.boolean().optional(),
+  providerAttempts: z.array(z.object({
+    model: z.string().min(1),
+    attemptKind: z.enum(["initial", "retry", "fallback"]),
+    phase: z.enum(["initial_tool_call", "final_response"]).optional(),
+    providerStatus: z.number().int().optional(),
+    failureReason: z.enum(["empty-output", "invalid-json", "schema-mismatch"]).optional(),
+    status: z.enum([
+      "success",
+      "timeout",
+      "provider_error",
+      "invalid_input",
+      "malformed_output",
+      "tool_error",
+      "rate_limited",
+      "cancelled",
+    ]),
+    latencyMs: z.number().nonnegative(),
+  })).optional(),
   providerStatus: z.number().int().optional(),
   provider: z.enum(["gemini", "fake"]),
   model: z.string().min(1),
@@ -73,6 +107,7 @@ const persistedEntrySchema = z.object({
     "malformed_output",
     "tool_error",
     "rate_limited",
+    "cancelled",
   ]),
   attempts: z.number().int().nonnegative(),
   latencyMs: z.number().nonnegative(),
