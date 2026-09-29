@@ -187,6 +187,9 @@ describe("AI Advice backend", () => {
       "gemini-3.8-flash",
       "gemini-3.6-flash",
     ]);
+    expect(parseGeminiModelChain("gemini-3.1-flash-lite")).toEqual([
+      "gemini-3.1-flash-lite",
+    ]);
     expect(() => parseGeminiModelChain("gemini-unknown-flash")).toThrow();
     expect(() => parseGeminiModelChain("gemini-3.7-flash,gemini-3.8-flash")).toThrow();
   });

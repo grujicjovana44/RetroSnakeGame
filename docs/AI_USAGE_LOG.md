@@ -104,3 +104,17 @@ code and documentation, confirming that descriptions match the implementation,
 and accepting the submitted result. In particular, verify the dependency update
 and inspect the interactive scenarios claimed for `test.mp4` before
 relying on them as acceptance evidence.
+
+## Week 04 update — 2026-09-29
+
+This addendum records the latest W04 review and live check. It is a concise
+summary, not a verbatim chat transcript; no credential, session ID, prompt or
+raw provider response is retained.
+
+| Work item | Human instruction summary | AI contribution | Result / evidence |
+| --- | --- | --- | --- |
+| Recheck mentor review | Verify whether the attached findings still match current code; do not change code. | Compared model selection, fallback eligibility, tests and logging against `server/server.ts`, `server/provider.ts`, `server/service.ts`, and `tests/ai.test.ts`. | The no-chain and unsafe-logging claims are stale. Fallback tests exist. A dedicated 404/network-fallback test does not. Details are in `docs/EVIDENCE_W04.md`. |
+| Live Gemini confirmation | Use the existing key for one live request; no local model. | Started the backend, created one synthetic session, and sent one AI Advice request with the configured single model. | `gemini-3.1-flash-lite` returned schema-valid advice in 3833 ms, one attempt, no fallback. Sanitized token counts: 445/154/599. |
+| Timeout diagnosis | Classify the prior 3.1 live timeout instead of calling it a 503. | Preserved the attempt phases, duration and usage totals from the sanitized backend log. | Two local timeout attempts in 15002 ms; no provider HTTP status was present. |
+| Documentation reconciliation | Bring W04 documents up to date while leaving code unchanged. | Updated current spec/contract/evals/evidence, usage log, plan/tasks and README with the verified state and explicit evidence limits. | Typecheck, 82 tests and build passed on 2026-09-29. E2E was not rerun. |
+| Gemma option | Clarified that the immediate goal was a live call through the existing key, not local inference. | Recorded Gemma as considered but not implemented or used. | The successful live provider is Gemini; no Gemma API capability is claimed. |

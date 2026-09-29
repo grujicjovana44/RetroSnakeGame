@@ -17,9 +17,10 @@ export const DEFAULT_GEMINI_MODEL_CHAIN = [
   "gemini-3.5-flash",
 ] as const;
 
-const GEMINI_MODEL_ORDER: ReadonlyMap<string, number> = new Map(
-  DEFAULT_GEMINI_MODEL_CHAIN.map((model, index) => [model, index]),
-);
+const GEMINI_MODEL_ORDER: ReadonlyMap<string, number> = new Map([
+  ...DEFAULT_GEMINI_MODEL_CHAIN.map((model, index) => [model, index] as const),
+  ["gemini-3.1-flash-lite", DEFAULT_GEMINI_MODEL_CHAIN.length],
+]);
 
 export function parseGeminiModelChain(value?: string): string[] {
   const models = value?.trim()

@@ -58,3 +58,25 @@ provider status.
 Timeout-phase telemetry and backoff-contract follow-up on 2026-09-28:
 `tests/ai.test.ts` passed 33/33, `npm test` passed 82/82, and
 `npm run typecheck` plus `npm run build` passed.
+
+## Final model smoke and documentation reconciliation — 2026-09-29
+
+- [x] W04-T012 Allow explicit single-model selection of
+  `gemini-3.1-flash-lite` without changing the default 3.8 → 3.7 → 3.6 → 3.5
+  chain; add parser coverage for that one-model configuration.
+- [x] W04-T013 Run a bounded live Advice flow with the configured single
+  model. One request completed the real stats-tool round-trip and returned a
+  schema-valid result. This verifies only 3.1 Flash Lite for one observed call;
+  it does not verify the other models or live fallback.
+- [x] W04-T014 Reconcile the W04 spec, provider contract, evals, evidence,
+  usage log, plan, tasks and README with current code, test coverage and live
+  results. No code or secret configuration was changed during this task.
+
+Final local verification on 2026-09-29: `npm exec -- vitest run
+tests/ai.test.ts` passed 33 tests; `npm run typecheck` passed; `npm test`
+passed 82 tests across 4 files; `npm run build` passed; `npm run test:e2e`
+passed 5/5 Playwright tests after configuring Playwright to start the Vite
+server automatically. All currently defined repository validation commands
+pass. The fake fallback tests exercise 503 transitions; they do not
+individually cover provider 404, network-error fallback, or each 500/502
+status.

@@ -17,7 +17,7 @@ predstavljaju live Gemini potvrdu.
 | A9 | Dupli i istovremeni zahtev za istu game session | Vraća cache/in-flight rezultat bez drugog provider poziva | `provider.callCount === 1` | PASS |
 | A10 | Lokalni usage report | Report čuva agregate i do 500 zapisa, bez session ID-a ili provider sadržaja | `createUsageReport` test | PASS |
 | A11 | Origin i učestalost zahteva | Samo allowlist origin; rate limiter odbija prekoračenje | Security helper tests | PASS |
-| A12 | Allowlist konfiguracija | Podržan je samo fiksni, uređeni model lanac ili njegov uređeni podskup | `parseGeminiModelChain` | PASS |
+| A12 | Allowlist konfiguracija | Podržan je samo fiksni, uređeni model lanac ili njegov uređeni podskup, uključujući eksplicitan single-model izbor `gemini-3.1-flash-lite` | `parseGeminiModelChain` | PASS |
 | A13 | 3.8 je transient; 3.7 uspe | Posle dva bounded attempt-a na 3.8, 3.7 uspeva; `fallbackUsed=true` i attempt kinds su zabeleženi | `tests/ai.test.ts` | PASS |
 | A14 | 3.8 i 3.7 su transient; 3.6 uspe | Fallback prelazi sekvencijalno na 3.6 u istom deadline-u | `tests/ai.test.ts` | PASS |
 | A15 | Iscrpljen model lanac | Osam maksimalnih attempt-a daju safe error, bez raw provider detalja | `tests/ai.test.ts` | PASS |
@@ -30,6 +30,33 @@ predstavljaju live Gemini potvrdu.
 Napomena: A2 je najvažniji dokaz za "reliability" deo ocenjivanja — mora
 eksplicitno da pokaže da poziv provideru **nije ni napravljen** kada je
 lokalni input nevalidan.
+
+## Fallback detalji i granice pokrivenosti
+
+- Fake provider testira transient `503` na `gemini-3.8-flash`, retry na istom
+	modelu i zatim uspeh na `gemini-3.7-flash`; proverava attempt kinds
+	`initial`/`retry`/`fallback` i `fallbackUsed=true`.
+- Drugi fake test pokriva `3.8 → 3.7 → 3.6`; iscrpljeni lanac pokriva 8
+	bounded pokušaja i safe error bez session ID-a ili stack trace-a u usage
+	telemetry.
+- Testovi proveravaju da `401`, `400`, `403` i `429` ne pređu na sledeći model;
+	za `429` je posebno provereno poštovanje `Retry-After` i odsustvo fallback-a.
+	Malformed output i tool-session mismatch takođe ne retry-uju/fallback-uju.
+- `providerStatus >= 500` i lokalni timeout imaju implementiranu bounded
+	retry politiku. Fallback tranzicije su u fake testovima konkretno dokazane
+	preko `503`; zasebni testovi za svaki `500`/`502`, provider `404` i
+	`network-error` fallback nisu dodati. Kod trenutno ne fallback-uje na `404`.
+- Ovi testovi dokazuju lokalno rutiranje, ne live dostupnost/fallback za svaki
+	model. Live dokaz za tačno jedan model je naveden odvojeno ispod.
+
+## Live smoke evidence — 2026-09-29
+
+Jedan stvarni `POST /api/game/session` + `POST /api/ai/advice` flow kroz
+konfigurisani Gemini API key uspeo je sa `gemini-3.1-flash-lite`. Odgovor je
+prošao `AdviceResponse` runtime validaciju, imao je `category=strategy`, jedan
+pokušaj i `fallbackUsed=false`; trajao je oko 3,8 sekundi. To je live
+tool-round-trip potvrda za taj model, ne automatizovani test i ne dokaz za
+ostale modele ili fallback prelaze.
 
 ## Verification — 2026-09-28
 
@@ -50,3 +77,16 @@ Timeout-phase telemetry and backoff-contract follow-up, 2026-09-28:
 `npm exec -- vitest run tests/ai.test.ts` passed 33 tests, `npm test` passed
 82 tests, and `npm run typecheck` plus `npm run build` passed. The documented
 backoff now matches the 1–1.5 second runtime cap at the 15-second deadline.
+
+## Latest full verification — 2026-09-29
+
+- `npm run test:e2e`: PASS, 5/5 Playwright tests. The first rerun failed
+	because Playwright did not start the Vite server; after configuring its
+	`webServer`, all five browser scenarios passed.
+- `npm test`: PASS, 82/82 tests across 4 files.
+- `npm run typecheck`: PASS.
+- `npm run build`: PASS.
+
+All currently defined project validation commands are green. This records the
+repository's existing test/check suite, not exhaustive testing of all possible
+inputs, provider states, or live fallback candidates.

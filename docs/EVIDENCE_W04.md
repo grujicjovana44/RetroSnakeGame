@@ -1,5 +1,10 @@
 # W04 Evidence — RetroSnake AI Advice
 
+Napomena o vremenskoj liniji: sekcije sa datumom 2026-09-28 su istorijski
+rezultati. Najnoviji status je u odeljku "Mentor review reconciliation and
+live verification — 2026-09-29"; on supersedes raniju tvrdnju da nijedan live
+advice poziv nije uspeo.
+
 ## Scenario
 
 Igrac zavrsi Snake partiju i na game-over ekranu klikne `AI Advice`. Backend
@@ -20,6 +25,7 @@ TypeScript Node backend
         v
 Gemini allowlist (ordered, backend-only)
   gemini-3.8-flash → gemini-3.7-flash → gemini-3.6-flash → gemini-3.5-flash
+  → gemini-3.1-flash-lite (explicit selection; not in default chain)
   get_game_session_stats(sessionId)
   final AdviceResponse
 
@@ -134,7 +140,7 @@ prolazu nije ponavljao bundle/history skeniranje.
 - `npm run build`: PASS.
 - This is local evidence only and does not verify live provider availability.
 
-## Live provider status
+## Live provider status before 2026-09-29
 
 Live evidence remains separate from fake-provider evidence. The configured
 chain is not considered live-verified until a model completes the same
@@ -192,3 +198,89 @@ report čuva do 500 zapisa; poznati tokeni se prikazuju samo kada Gemini vrati
 usage metadata. Report ne izračunava cenu. Pricing poređenje za izabrani model
 nije zabeleženo. Podela doprinosa oba člana tima nije dokumentovana ovim
 prolazom i treba da je dopune Jovana i Jelena.
+
+## Mentor review reconciliation and live verification — 2026-09-29
+
+### Review claim check
+
+| Review statement | Current repository/evidence | Finding |
+| --- | --- | --- |
+| `server/server.ts` hardcodes `gemini-3.8-flash`; no chain exists | Server reads `GEMINI_MODEL_CHAIN`, parses the backend allowlist and creates providers per model. The default chain remains 3.8 → 3.7 → 3.6 → 3.5. The current local environment selects only `gemini-3.1-flash-lite`. | Stale for current code. `GeminiAdviceProvider` still has a 3.8 constructor default, but the server passes the configured model explicitly. |
+| Fallback chain, `fallbackUsed`, and tests are missing | Service has sequential per-model attempts, a shared 15-second deadline, bounded retry/fallback, and `fallbackUsed`. Fake tests cover 3.8 → 3.7, 3.8 → 3.7 → 3.6, exhausted chain, and no-fallback cases. | Implemented and locally tested; live fallback is not verified. |
+| `models.list` does not prove generation/tool calling | Correct. It proves listing/authentication only. | The 2026-09-29 successful advice request is stronger evidence for `gemini-3.1-flash-lite`: it completed the real tool round-trip and returned schema-valid advice. It says nothing about other candidates. |
+| Live 3.8 returned high-demand 503 | The 2026-09-28 bounded probe recorded provider 503 for 3.8 (and 3.7). | Historical provider availability result; not the current selected model's result. |
+| Earlier alternate-model attempts were not classified | The 3.1 timeout log recorded two local timeout attempts and phases; a later 3.1 request succeeded. | The observed attempts are classified below. They do not establish a permanent availability guarantee. |
+| Contract/evidence should wait for an exact live model success | A single 3.1 Flash Lite request has since completed the exact two-step Advice flow. | The docs now record this model-specific success and preserve the distinction between live success and fake fallback coverage. |
+| Provider debug logs expose session/tool/game/raw provider data | `server/provider.ts` contains no provider-content console logging; server-level advice telemetry contains sanitized fields only. Usage telemetry tests exclude session IDs and stack text. | Stale for current implementation. Source inspection confirms sanitization; no process-console capture test was run. |
+| Gemma needs a separate adapter, not a model-string swap | The accepted final test used the existing Gemini API key and Gemini model. | Gemma was not implemented or used for this live result. No Gemma capability is claimed. |
+
+### Fallback policy verification
+
+The implementation uses one logical request with a 15-second overall
+deadline, at most two attempts per model, and sequential model transitions.
+For a 15-second request, the same-model retry delay is bounded to at most
+1.5 seconds; the remaining model budget is reserved where possible. The
+configured single-model chain therefore retries only the same model and cannot
+fall back elsewhere.
+
+Automated evidence:
+
+- Fake `503` twice on `gemini-3.8-flash`, then success on
+  `gemini-3.7-flash`; the test asserts `initial`/`retry`/`fallback` attempt
+  kinds and `fallbackUsed=true`.
+- Fake failures on 3.8 and 3.7, then success on 3.6.
+- Exhausted chain returns a generic safe error after 8 fake attempts and
+  records sanitized telemetry.
+- `401`, `400`, `403` and `429` do not fall back; 429 can retry once on the
+  same model and honors `Retry-After` if the deadline allows. Malformed output
+  and tool-session mismatch do not retry/fallback.
+- The tests use a fake 503 for chain transitions. They do not separately
+  prove fallback for every 500/502/network/timeout variant. Provider 404 has
+  no dedicated test and is not fallback-eligible in current code.
+
+### Live calls and exact outcomes
+
+1. **2026-09-29 timeout run:** model `gemini-3.1-flash-lite`, overall
+   `status=timeout`, `attempts=2`, `latencyMs=15002`, `fallbackUsed=false`.
+   Attempt 1 timed out in `final_response` at 7505 ms; attempt 2 timed out in
+   `initial_tool_call` at 5995 ms. Token metadata totaled 213 prompt, 51
+   output, 264 total. No provider HTTP status was reported for these local
+   timeout attempts, so this is not classified as provider 503.
+2. **2026-09-29 successful run:** the first curl found no backend listening
+   and failed before an advice/provider request. After starting the backend,
+   one synthetic game session was created and one `/api/ai/advice` request
+   was sent. Model `gemini-3.1-flash-lite` returned `status=success`,
+   `phase=final_response`, `attempts=1`, `latencyMs=3833`,
+   `fallbackUsed=false`; token metadata totaled 445 prompt, 154 output, 599
+   total. The response passed runtime schema validation and had category
+   `strategy`. Raw advice, session ID and API key are intentionally omitted.
+
+The official Gemini pricing page lists free-tier input/output for
+`gemini-3.1-flash-lite`, subject to tier availability and limits. This test did
+not inspect the account billing tier or usage dashboard:
+https://ai.google.dev/gemini-api/docs/pricing
+
+Gemma 4 was considered after mentor feedback, but the accepted immediate goal
+was a live call through the existing Gemini API key. The successful call above
+is Gemini, not Gemma; no local model, new provider, dependency or Gemma live
+claim is part of this evidence.
+
+### Latest local verification — 2026-09-29
+
+- `npx vitest run tests/ai.test.ts`: PASS, 33 tests (focused run before the
+  latest full verification).
+- `npm run typecheck`: PASS.
+- `npm test`: PASS, 82 tests across 4 files.
+- `npm run build`: PASS.
+- `npm run test:e2e`: PASS, 5 Playwright tests. The initial rerun failed all
+  5 tests because the configured frontend URL had no server listening; adding
+  Playwright `webServer` startup fixed the test setup. All 5 passed afterward.
+- No code was changed during this documentation reconciliation. The code
+  changes enabling explicit 3.1 Flash Lite selection and its parser test were
+  already present and were included in these checks.
+
+All currently defined local verification gates have now passed: typecheck,
+the complete Vitest suite, Playwright E2E, and production build. This means
+all tests/checks defined by the repository were green in this run; it does not
+claim that every conceivable input or every live fallback model has been
+tested.

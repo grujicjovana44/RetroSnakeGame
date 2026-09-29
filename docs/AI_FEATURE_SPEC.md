@@ -66,11 +66,18 @@ Advice rezultat se ponovo koristi za istu game session.
 ## Koji model/provider koristi?
 Backend koristi konačnu, fiksnu Gemini allowlistu ovim redosledom:
 `gemini-3.8-flash` → `gemini-3.7-flash` → `gemini-3.6-flash` →
-`gemini-3.5-flash`. `GEMINI_MODEL_CHAIN` u backend environment-u može da
-izabere samo neprazan, uređeni podskup ove allowliste. Browser ne bira model.
-Scenario je kratka analiza četiri numeričke statistike i jednog read-only tool
-round-trip-a. Live generisanje/function calling za svaki model mora zasebno da
-se dokaže; models.list i fake-provider testovi nisu live dokaz.
+`gemini-3.5-flash` → `gemini-3.1-flash-lite`. Ako `GEMINI_MODEL_CHAIN` nije
+postavljen, podrazumevani lanac je prva četiri modela; `gemini-3.1-flash-lite`
+je dozvoljen za eksplicitan izbor, uključujući konfiguraciju sa samo jednim
+modelom. Trenutni lokalni smoke izbor je `GEMINI_MODEL_CHAIN=gemini-3.1-flash-lite`.
+Browser ne bira model. Scenario je kratka analiza četiri numeričke statistike i
+jednog read-only tool round-trip-a. `models.list` i fake-provider testovi sami
+nisu live dokaz; tačno određeni model mora da završi isti dvokoračni flow.
+
+Verifikacioni snimak od 2026-09-29: `gemini-3.1-flash-lite` je jednom uspešno
+završio live `get_game_session_stats` round-trip i vratio schema-validan
+`AdviceResponse`. Ovo potvrđuje taj model i taj zahtev, ali ne potvrđuje live
+dostupnost ostalih modela niti live fallback prelaze.
 
 ## Reliability i zaštita
 

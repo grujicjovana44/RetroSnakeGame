@@ -4,17 +4,24 @@
 Provider: Gemini
 Model chain (backend-only allowlist, ordered):
   gemini-3.8-flash → gemini-3.7-flash → gemini-3.6-flash → gemini-3.5-flash
+  → gemini-3.1-flash-lite
 Configuration: GEMINI_MODEL_CHAIN in server/.env; it may contain only a
   non-empty ordered subset of the fixed allowlist. The browser cannot select
-  a model. Current live availability/function-calling capability for this
-  chain is unverified until each candidate passes the documented smoke flow.
+  a model. Without this variable, the default chain is gemini-3.8-flash through
+  gemini-3.5-flash; gemini-3.1-flash-lite is an explicitly selectable final
+  allowlist member. The current local smoke configuration selects only
+  gemini-3.1-flash-lite. One live two-step request with that model succeeded
+  on 2026-09-29; this does not verify the other candidates or live fallback.
 
 Zašto je ovaj model dovoljan:
   Lanac daje ograničen failover kada izabrani model privremeno nije dostupan.
   Samo članstvo u models.list nije dokaz za generateContent ili function
-  calling. Ne dodavati preview/latest/lite varijante bez eksplicitnog testa i
-  ažurirane allowliste. Pre produkcionog korišćenja proveriti aktuelnu cenu i
-  tier limite; ovaj contract ne tvrdi da je neki model najjeftiniji.
+  calling. `gemini-3.1-flash-lite` je dodat u allowlistu nakon eksplicitnog
+  single-model live testa. Zvanična Gemini Developer API pricing stranica
+  prikazuje free-tier stope za taj model; stvarni tier, kvote i billing status
+  konkretnog API projekta nisu provereni ovim testom. Pre produkcionog
+  korišćenja proveriti aktuelnu cenu i tier limite:
+  https://ai.google.dev/gemini-api/docs/pricing
 
 Input (function/tool):
   Tool name: get_game_session_stats
@@ -60,12 +67,16 @@ Retry and fallback policy:
   (proporcionalno kraći za kraći test/override deadline). Nema paralelnih modela.
   Retry se radi za provider 408/429/5xx, timeout i mrežne greške. 429 se
   ponavlja najviše jednom na istom modelu, ali ne pokreće fallback.
-  Posle dva transient pokušaja, fallback na sledeći allowlisted model dozvoljen
-  je za 408, 500, 502, 503, timeout ili mrežnu grešku. Lanac se izvršava
-  sekvencijalno i završava safe error-om kada se iscrpi ili istekne deadline.
+  Kada je isti-model retry iscrpljen ili više ne staje u ukupan deadline,
+  fallback na sledeći allowlisted model dozvoljen je za 408, 500, 502, 503,
+  lokalni timeout ili mrežnu grešku bez provider statusa. Retry prepoznaje
+  5xx, ali fallback status allowlista je namerno uža od retry klasifikacije.
+  Lanac se izvršava sekvencijalno i završava safe error-om kada se iscrpi ili
+  istekne deadline.
   400, 401/403, 404, safety/policy odbijanje, malformed output, missing tool
-  call i tool-session mismatch ne pokreću fallback. Za 404 se prvo mora
-  potvrditi tačan model ID i podržana metoda izvan korisničkog zahteva.
+  call i tool-session mismatch ne pokreću fallback. Trenutni kod ne radi
+  fallback ni za jedan 404; model ID i podržanu metodu treba prvo proveriti
+  izvan korisničkog zahteva. Ovaj 404 slučaj nema zaseban fake-provider test.
   Retry se ne radi za nevalidan lokalni input ili malformed/tool output.
 
 Secrets:

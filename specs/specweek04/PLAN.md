@@ -6,14 +6,25 @@ Approved for implementation on 2026-09-27. `docs/AI_FEATURE_SPEC.md` is the
 feature specification and `docs/AI_PROVIDER_CONTRACT.md` is the provider
 contract. `docs/GAME_SPEC.md` remains authoritative for W03 gameplay behavior.
 
+Status update — 2026-09-29: the default fallback chain remains
+`gemini-3.8-flash` → `gemini-3.7-flash` → `gemini-3.6-flash` →
+`gemini-3.5-flash`. `gemini-3.1-flash-lite` is now an explicitly allowed
+single-model selection. One live two-step Advice request with that model
+succeeded; live availability of the other chain members and live fallback are
+still unverified. Gemma is not implemented; the accepted live check used the
+existing Gemini API key.
+
 ## Scope
 
 Harden the existing post-game AI Advice flow and write a private local report
-for backend-recorded provider token usage. Use the fixed backend-only Gemini
-allowlist `gemini-3.8-flash` → `gemini-3.7-flash` → `gemini-3.6-flash` →
-`gemini-3.5-flash`, retain the read-only game-stats tool, existing TypeScript
-stack, and fake-provider approach. Do not add dependencies. Live availability
-is unverified until the exact two-step flow succeeds for a model.
+for backend-recorded provider token usage. Use the backend-only Gemini order
+`gemini-3.8-flash` → `gemini-3.7-flash` → `gemini-3.6-flash` →
+`gemini-3.5-flash` → `gemini-3.1-flash-lite`; the first four remain the
+default chain, while 3.1 Flash Lite is an explicitly selectable candidate.
+Retain the read-only game-stats tool, existing TypeScript stack, and
+fake-provider approach. Do not add dependencies. A live model is verified
+only when the exact two-step flow succeeds; that gate has now passed once for
+`gemini-3.1-flash-lite`, not for the full chain.
 
 ## Decisions and constraints
 
@@ -65,8 +76,9 @@ is unverified until the exact two-step flow succeeds for a model.
    metadata; it is Git-ignored and has no public UI/API.
 4. CORS is restricted to configured origins; backend errors remain generic.
 5. Evidence distinguishes fake-provider results from live provider results.
-  A successful live two-step tool flow remains unclaimed until observed for
-  the exact model named in evidence.
+  One successful live two-step tool flow is recorded for
+  `gemini-3.1-flash-lite`; all other models and live fallback transitions
+  remain unverified.
 6. No dependency, package script, API key, database, or cloud storage is added.
   The Git-ignored `server/ai-usage.local.json` file is the explicitly allowed
   local usage report; it must remain private, bounded, and free of session
@@ -79,7 +91,9 @@ usage report persists its latest 500 entries. Gemini may omit usage metadata
 on failures. Client-side cancellation cannot guarantee that an accepted
 provider request will not be billed. Live provider validation requires a
 locally configured key and is not part of automated tests. On 2026-09-28 the
-API returned 503 high-demand for a direct `gemini-3.8-flash` request;
-`gemini-3.1-flash-lite` was listed but its exploratory advice-flow call also
-returned provider 503. Automated tests do not establish live service
-availability. Provider logging is now limited to sanitized attempt metadata.
+API returned high-demand 503 for direct 3.8/3.7 requests and other candidates
+did not return usable text. On 2026-09-29, 3.1 Flash Lite first timed out on
+two attempts and then completed one successful Advice tool round-trip. This
+does not prove permanent availability, free-tier eligibility for a particular
+account, or live fallback. Provider logging is limited to sanitized attempt
+metadata.

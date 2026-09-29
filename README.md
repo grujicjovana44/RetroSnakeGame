@@ -58,10 +58,12 @@ Immediate reversal into the opposite direction is prevented, avoiding accidental
 After Game Over, the player can request a short structured analysis of the
 completed game. The TypeScript backend validates game data, calls Gemini using
 the backend-only ordered allowlist `gemini-3.8-flash` → `gemini-3.7-flash` →
-`gemini-3.6-flash` → `gemini-3.5-flash`, validates the result, and returns a
-safe response. The API key and optional ordered-subset `GEMINI_MODEL_CHAIN`
-configuration belong only in the backend environment. Live model availability
-is not implied by the fake-provider tests.
+`gemini-3.6-flash` → `gemini-3.5-flash` → `gemini-3.1-flash-lite`, validates
+the result, and returns a safe response. The first four models are the default
+fallback chain; `GEMINI_MODEL_CHAIN` can select an ordered subset, including a
+single explicit model. A live two-step advice request succeeded once with
+`gemini-3.1-flash-lite` on 2026-09-29. This does not prove live fallback or
+availability of the other models.
 
 Token usage is not shown in the game. The backend writes request counts,
 outcomes, latency, model, timestamp, and available prompt/output/total token
@@ -114,10 +116,11 @@ npm install
 ### 3. Configure the backend
 
 Copy `server/.env.example` to `server/.env` and set `GEMINI_API_KEY` there if
-you want to use live AI Advice. The example config contains the default
-`GEMINI_MODEL_CHAIN`; it accepts only the fixed ordered allowlist or an ordered
-subset. Never place the key in frontend code or commit the `.env` file. The
-game can still run without a key; live advice will return the safe unavailable
+you want to use live AI Advice. `GEMINI_MODEL_CHAIN` accepts only an ordered
+subset of the fixed backend allowlist. For a single-model smoke test, set it to
+`gemini-3.1-flash-lite`; omitting it uses the default 3.8 → 3.7 → 3.6 → 3.5
+chain. Never place the key in frontend code or commit the `.env` file. The game
+can still run without a key; live advice will return the safe unavailable
 message.
 
 ### 4. Start the backend and frontend
