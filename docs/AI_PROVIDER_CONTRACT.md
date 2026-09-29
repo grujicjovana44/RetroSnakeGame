@@ -10,16 +10,17 @@ Configuration: GEMINI_MODEL_CHAIN in server/.env; it may contain only a
   a model. Without this variable, the default chain is gemini-3.8-flash through
   gemini-3.5-flash; gemini-3.1-flash-lite is an explicitly selectable final
   allowlist member. The current local smoke configuration selects only
-  gemini-3.1-flash-lite. One live two-step request with that model succeeded
-  on 2026-09-29; this does not verify the other candidates or live fallback.
+  gemini-3.1-flash-lite. The local usage report contains five successful
+  two-step requests and three timeouts for that model on 2026-09-29; this does
+  not verify the other candidates or live fallback.
 
 Zašto je ovaj model dovoljan:
   Lanac daje ograničen failover kada izabrani model privremeno nije dostupan.
   Samo članstvo u models.list nije dokaz za generateContent ili function
   calling. `gemini-3.1-flash-lite` je dodat u allowlistu nakon eksplicitnog
   single-model live testa. Zvanična Gemini Developer API pricing stranica
-  prikazuje free-tier stope za taj model; stvarni tier, kvote i billing status
-  konkretnog API projekta nisu provereni ovim testom. Pre produkcionog
+  prikazuje Free-tier input/output cene za taj model; stvarni tier, kvote i
+  billing status konkretnog API projekta nisu provereni ovim testom. Pre produkcionog
   korišćenja proveriti aktuelnu cenu i tier limite:
   https://ai.google.dev/gemini-api/docs/pricing
 

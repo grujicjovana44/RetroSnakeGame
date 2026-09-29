@@ -51,12 +51,13 @@ lokalni input nevalidan.
 
 ## Live smoke evidence — 2026-09-29
 
-Jedan stvarni `POST /api/game/session` + `POST /api/ai/advice` flow kroz
-konfigurisani Gemini API key uspeo je sa `gemini-3.1-flash-lite`. Odgovor je
-prošao `AdviceResponse` runtime validaciju, imao je `category=strategy`, jedan
-pokušaj i `fallbackUsed=false`; trajao je oko 3,8 sekundi. To je live
-tool-round-trip potvrda za taj model, ne automatizovani test i ne dokaz za
-ostale modele ili fallback prelaze.
+Lokalni usage report sadrži pet stvarnih `POST /api/game/session` +
+`POST /api/ai/advice` flow-ova koji su uspešno koristili
+`gemini-3.1-flash-lite`, kao i tri timeout-a tog dana. Svaki success je prošao
+`AdviceResponse` runtime validaciju; svi su imali `fallbackUsed=false`. Ovo je
+ponovljena live potvrda samo za taj model i ne dokazuje live dostupnost ostalih
+modela ili fallback prelaza. Automatizovani testovi ostaju odvojeni od ovih
+live zapisa.
 
 ## Verification — 2026-09-28
 

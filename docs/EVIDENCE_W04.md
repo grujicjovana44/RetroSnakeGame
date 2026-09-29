@@ -97,9 +97,18 @@ da runtime schema odbija nevalidan objekat.
 - [x] Output se validira pre prikaza korisniku.
 - [x] Browser CORS origin je ogranicen na allowlist.
 
-Security checklist je popunjen prema rucnoj potvrdi vlasnika; agent u ovom
-prolazu nije ponavljao bundle/history skeniranje.
+Verification update — 2026-09-29: all security controls listed in the W04
+assignment are marked PASS based on source/test review and owner confirmation.
+In this pass, `git check-ignore` confirmed `server/.env` is ignored,
+`git ls-files` confirmed it is not tracked, and a search of the built frontend
+assets found no `GEMINI_API_KEY` or `API_KEY` variable markers. Source review
+confirmed that the provider key is read by the backend, safe user-facing errors
+are generic, provider telemetry is sanitized, and CORS/rate limits are
+configured. Existing tests cover invalid-input zero-provider-call and output
+validation. The no-secret-in-Git-history item remains based on the owner's
+manual confirmation and was not independently rescanned in this pass.
 
+These results mean the assignment-defined security checklist passed.
 ## Reliability follow-up status
 
 - Fake-provider suite after the follow-up: 22/22 passed, including ordered
@@ -207,10 +216,10 @@ prolazom i treba da je dopune Jovana i Jelena.
 | --- | --- | --- |
 | `server/server.ts` hardcodes `gemini-3.8-flash`; no chain exists | Server reads `GEMINI_MODEL_CHAIN`, parses the backend allowlist and creates providers per model. The default chain remains 3.8 → 3.7 → 3.6 → 3.5. The current local environment selects only `gemini-3.1-flash-lite`. | Stale for current code. `GeminiAdviceProvider` still has a 3.8 constructor default, but the server passes the configured model explicitly. |
 | Fallback chain, `fallbackUsed`, and tests are missing | Service has sequential per-model attempts, a shared 15-second deadline, bounded retry/fallback, and `fallbackUsed`. Fake tests cover 3.8 → 3.7, 3.8 → 3.7 → 3.6, exhausted chain, and no-fallback cases. | Implemented and locally tested; live fallback is not verified. |
-| `models.list` does not prove generation/tool calling | Correct. It proves listing/authentication only. | The 2026-09-29 successful advice request is stronger evidence for `gemini-3.1-flash-lite`: it completed the real tool round-trip and returned schema-valid advice. It says nothing about other candidates. |
+| `models.list` does not prove generation/tool calling | Correct. It proves listing/authentication only. | The private local usage report records five successful Advice requests for `gemini-3.1-flash-lite` on 2026-09-29; they completed the real tool round-trip and passed response validation. |
 | Live 3.8 returned high-demand 503 | The 2026-09-28 bounded probe recorded provider 503 for 3.8 (and 3.7). | Historical provider availability result; not the current selected model's result. |
 | Earlier alternate-model attempts were not classified | The 3.1 timeout log recorded two local timeout attempts and phases; a later 3.1 request succeeded. | The observed attempts are classified below. They do not establish a permanent availability guarantee. |
-| Contract/evidence should wait for an exact live model success | A single 3.1 Flash Lite request has since completed the exact two-step Advice flow. | The docs now record this model-specific success and preserve the distinction between live success and fake fallback coverage. |
+| Contract/evidence should wait for an exact live model success | The local usage report records five 3.1 Flash Lite successes and three timeouts. | The docs record repeated live success for this model and keep other models/live fallback unverified. |
 | Provider debug logs expose session/tool/game/raw provider data | `server/provider.ts` contains no provider-content console logging; server-level advice telemetry contains sanitized fields only. Usage telemetry tests exclude session IDs and stack text. | Stale for current implementation. Source inspection confirms sanitization; no process-console capture test was run. |
 | Gemma needs a separate adapter, not a model-string swap | The accepted final test used the existing Gemini API key and Gemini model. | Gemma was not implemented or used for this live result. No Gemma capability is claimed. |
 
@@ -246,19 +255,41 @@ Automated evidence:
    `initial_tool_call` at 5995 ms. Token metadata totaled 213 prompt, 51
    output, 264 total. No provider HTTP status was reported for these local
    timeout attempts, so this is not classified as provider 503.
-2. **2026-09-29 successful run:** the first curl found no backend listening
-   and failed before an advice/provider request. After starting the backend,
-   one synthetic game session was created and one `/api/ai/advice` request
-   was sent. Model `gemini-3.1-flash-lite` returned `status=success`,
-   `phase=final_response`, `attempts=1`, `latencyMs=3833`,
-   `fallbackUsed=false`; token metadata totaled 445 prompt, 154 output, 599
-   total. The response passed runtime schema validation and had category
-   `strategy`. Raw advice, session ID and API key are intentionally omitted.
+2. **2026-09-29 successful runs:** the first curl found no backend listening
+  and failed before an advice/provider request. The private local usage report
+  records five synthetic-session Advice requests with `status=success` and
+  three with `status=timeout` for `gemini-3.1-flash-lite`. Every success
+  passed runtime schema validation and had `fallbackUsed=false`; the three
+  timeouts are retained as failures, not counted as successes. The first
+  recorded success took 3833 ms in one attempt; a later success took 13587 ms
+  over two attempts (first attempt timed out, retry succeeded); the latest
+  success at `2026-09-29T17:12:23Z` took 3910 ms in one attempt. Its sanitized
+  token counts were 441 prompt, 166 output, 607 total. Raw advice, session IDs
+  and API key are intentionally omitted.
 
 The official Gemini pricing page lists free-tier input/output for
-`gemini-3.1-flash-lite`, subject to tier availability and limits. This test did
-not inspect the account billing tier or usage dashboard:
+`gemini-3.1-flash-lite`, subject to free-tier availability and limits. This
+workspace has no authenticated account-tier evidence, so the actual project's
+billing tier, quota and charges are **not verified**. The account owner can
+check the project's Billing Tier on AI Studio Projects, usage at AI Studio
+Usage, and active quotas at AI Studio Rate Limits:
 https://ai.google.dev/gemini-api/docs/pricing
+https://aistudio.google.com/projects
+https://aistudio.google.com/usage
+https://aistudio.google.com/rate-limit
+
+The owner-provided AI Studio Usage screenshots (project `Gemini Project`,
+captured 2026-09-29) show activity for both `Gemini 3.1 Flash Lite` and
+`Gemini 3.8 Flash`. The expanded dashboard shows multiple API keys (including
+keys labeled Gemini API Key 2, 3, and 4) and error categories `400
+BadRequest`, `404 NotFound`, `429 TooManyRequests`, and `503
+ServiceUnavailable`. These charts aggregate project/API-key activity; their
+per-model counts are not legible enough to reconcile with the private local
+report or attribute an error to one Advice request. They support the claim that
+the project made live API requests and encountered those provider error
+categories, but do not prove a specific billing tier or exact number of
+successful Advice flows. The screenshots were reviewed in-chat and are not
+archived as repository files.
 
 Gemma 4 was considered after mentor feedback, but the accepted immediate goal
 was a live call through the existing Gemini API key. The successful call above
@@ -284,3 +315,11 @@ the complete Vitest suite, Playwright E2E, and production build. This means
 all tests/checks defined by the repository were green in this run; it does not
 claim that every conceivable input or every live fallback model has been
 tested.
+
+Reliability summary: all defined local retry, timeout, cancellation, fallback,
+validation, unit and E2E checks pass. Live Gemini usage is not uniformly
+successful: the private report records five successes and three timeouts for
+`gemini-3.1-flash-lite`, and the owner-provided AI Studio dashboard shows
+project-level 400/404/429/503 errors across multiple keys/models. Therefore the
+implemented bounded-retry/safe-failure controls pass, while uninterrupted
+provider availability is not claimed.

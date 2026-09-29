@@ -74,10 +74,11 @@ Browser ne bira model. Scenario je kratka analiza četiri numeričke statistike 
 jednog read-only tool round-trip-a. `models.list` i fake-provider testovi sami
 nisu live dokaz; tačno određeni model mora da završi isti dvokoračni flow.
 
-Verifikacioni snimak od 2026-09-29: `gemini-3.1-flash-lite` je jednom uspešno
-završio live `get_game_session_stats` round-trip i vratio schema-validan
-`AdviceResponse`. Ovo potvrđuje taj model i taj zahtev, ali ne potvrđuje live
-dostupnost ostalih modela niti live fallback prelaze.
+Verifikacioni snimak od 2026-09-29: lokalni usage report sadrži pet uspešnih
+live `gemini-3.1-flash-lite` Advice flow-ova i tri timeout-a; svaki uspešan
+flow vratio je schema-validan `AdviceResponse`, bez prelaska na drugi model.
+Ovo potvrđuje ponovljenu upotrebu tog modela, ali ne potvrđuje dostupnost
+ostalih modela niti live fallback prelaze.
 
 ## Reliability i zaštita
 

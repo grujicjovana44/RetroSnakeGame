@@ -61,9 +61,9 @@ the backend-only ordered allowlist `gemini-3.8-flash` → `gemini-3.7-flash` →
 `gemini-3.6-flash` → `gemini-3.5-flash` → `gemini-3.1-flash-lite`, validates
 the result, and returns a safe response. The first four models are the default
 fallback chain; `GEMINI_MODEL_CHAIN` can select an ordered subset, including a
-single explicit model. A live two-step advice request succeeded once with
-`gemini-3.1-flash-lite` on 2026-09-29. This does not prove live fallback or
-availability of the other models.
+single explicit model. The local usage report records five successful two-step
+advice requests and three timeouts with `gemini-3.1-flash-lite` on 2026-09-29.
+This does not prove live fallback or availability of the other models.
 
 Token usage is not shown in the game. The backend writes request counts,
 outcomes, latency, model, timestamp, and available prompt/output/total token

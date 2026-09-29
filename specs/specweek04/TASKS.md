@@ -64,10 +64,10 @@ Timeout-phase telemetry and backoff-contract follow-up on 2026-09-28:
 - [x] W04-T012 Allow explicit single-model selection of
   `gemini-3.1-flash-lite` without changing the default 3.8 → 3.7 → 3.6 → 3.5
   chain; add parser coverage for that one-model configuration.
-- [x] W04-T013 Run a bounded live Advice flow with the configured single
-  model. One request completed the real stats-tool round-trip and returned a
-  schema-valid result. This verifies only 3.1 Flash Lite for one observed call;
-  it does not verify the other models or live fallback.
+- [x] W04-T013 Run bounded live Advice flows with the configured single
+  model. Five requests completed the real stats-tool round-trip and returned
+  schema-valid results; three other attempts timed out. This verifies repeated
+  use of 3.1 Flash Lite, not the other models or live fallback.
 - [x] W04-T014 Reconcile the W04 spec, provider contract, evals, evidence,
   usage log, plan, tasks and README with current code, test coverage and live
   results. No code or secret configuration was changed during this task.

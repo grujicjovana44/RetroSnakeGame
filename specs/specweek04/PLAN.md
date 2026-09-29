@@ -9,10 +9,12 @@ contract. `docs/GAME_SPEC.md` remains authoritative for W03 gameplay behavior.
 Status update — 2026-09-29: the default fallback chain remains
 `gemini-3.8-flash` → `gemini-3.7-flash` → `gemini-3.6-flash` →
 `gemini-3.5-flash`. `gemini-3.1-flash-lite` is now an explicitly allowed
-single-model selection. One live two-step Advice request with that model
-succeeded; live availability of the other chain members and live fallback are
-still unverified. Gemma is not implemented; the accepted live check used the
-existing Gemini API key.
+single-model selection. The local usage history records five successful live
+two-step Advice requests and three timeouts for that model; live availability
+of the other chain members and live fallback are still unverified. The official
+pricing page lists free-tier input/output for 3.1 Flash Lite, but the account's
+actual billing tier and quota have not been checked. Gemma is not implemented;
+the accepted live checks used Gemini.
 
 ## Scope
 
@@ -23,8 +25,9 @@ for backend-recorded provider token usage. Use the backend-only Gemini order
 default chain, while 3.1 Flash Lite is an explicitly selectable candidate.
 Retain the read-only game-stats tool, existing TypeScript stack, and
 fake-provider approach. Do not add dependencies. A live model is verified
-only when the exact two-step flow succeeds; that gate has now passed once for
-`gemini-3.1-flash-lite`, not for the full chain.
+only when the exact two-step flow succeeds; that gate has passed five times
+for `gemini-3.1-flash-lite`, alongside three timeout results, not for the full
+chain.
 
 ## Decisions and constraints
 
@@ -95,5 +98,6 @@ API returned high-demand 503 for direct 3.8/3.7 requests and other candidates
 did not return usable text. On 2026-09-29, 3.1 Flash Lite first timed out on
 two attempts and then completed one successful Advice tool round-trip. This
 does not prove permanent availability, free-tier eligibility for a particular
-account, or live fallback. Provider logging is limited to sanitized attempt
-metadata.
+account, or live fallback. The public price table lists free-tier input/output
+for 3.1 Flash Lite, but this account's billing tier and quota remain
+unverified. Provider logging is limited to sanitized attempt metadata.
