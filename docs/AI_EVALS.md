@@ -26,6 +26,7 @@ predstavljaju live Gemini potvrdu.
 | A18 | JSON format | Validan je samo jedan potpun JSON objekat; code fence i okolni tekst se odbacuju | `tests/ai.test.ts` | PASS |
 | A19 | Prekid klijentske veze | Provider se abortuje kada poslednji klijent odustane; prekid jednog od više čekalaca ne prekida deljeni poziv | `tests/ai.test.ts` | PASS |
 | A20 | Faza lokalnog timeout-a | Attempt telemetry beleži poslednju poznatu fazu provider-a i kada lokalni timer prekine poziv | `tests/ai.test.ts` | PASS |
+| A21 | AI Advice browser tok posle game-over-a | Browser šalje validne statistike sesije, prosleđuje vraćeni `sessionId` i prikazuje summary i recommendation | `e2e/game.spec.ts` | PASS (mock API) |
 
 Napomena: A2 je najvažniji dokaz za "reliability" deo ocenjivanja — mora
 eksplicitno da pokaže da poziv provideru **nije ni napravljen** kada je
@@ -56,8 +57,30 @@ Lokalni usage report sadrži pet stvarnih `POST /api/game/session` +
 `gemini-3.1-flash-lite`, kao i tri timeout-a tog dana. Svaki success je prošao
 `AdviceResponse` runtime validaciju; svi su imali `fallbackUsed=false`. Ovo je
 ponovljena live potvrda samo za taj model i ne dokazuje live dostupnost ostalih
-modela ili fallback prelaza. Automatizovani testovi ostaju odvojeni od ovih
-live zapisa.
+modela ili uspešan fallback odgovor. Automatizovani testovi ostaju odvojeni od
+ovih live zapisa.
+
+## AI browser E2E — 2026-09-29
+
+`npm run test:e2e -- --grep "requests and renders AI advice"`: PASS, 1/1.
+Test završava determinističku partiju, mock-uje `POST /api/game/session` i
+`POST /api/ai/advice`, proverava statistike sesije i isti `sessionId` u Advice
+zahtevu, pa potvrđuje prikaz summary i recommendation teksta. Ovo je dokaz
+kompletnog browser UI toka do API ugovora, ali mock ne dokazuje backend/provider
+izvršavanje niti live dostupnost.
+
+Kontrolisani live probe u `2026-09-29T19:22:13Z` poslao je jedan Advice zahtev
+sa lancem `gemini-3.8-flash` → `gemini-3.1-flash-lite`. Telemetry beleži 3.8
+initial+retry `503`, zatim stvarni fallback pokušaj ka 3.1 i njegov retry,
+oba `503`; ukupno četiri attempt-a, `fallbackUsed=true`, 11,152 ms i konačni
+`status=provider_error`. Time je potvrđen jedan live prelaz rutiranja, ali ne i
+uspešan fallback odgovor ili dostupnost svih modela u lancu. Ovaj ishod je
+sačuvan u git-ignorisanom `server/ai-usage.local.json`; API ključ i provider
+sadržaj nisu deo evidence zapisa.
+
+AI Studio screenshotovi podržavaju tvrdnje o korisničkom rezultatu i provider
+usage-u, ali dashboard prikazuje agregate i nije samostalan dokaz kompletnog
+browser E2E AI toka.
 
 ## Verification — 2026-09-28
 
@@ -81,9 +104,9 @@ backoff now matches the 1–1.5 second runtime cap at the 15-second deadline.
 
 ## Latest full verification — 2026-09-29
 
-- `npm run test:e2e`: PASS, 5/5 Playwright tests. The first rerun failed
+- `npm run test:e2e`: PASS, 6/6 Playwright tests, including A21. The first rerun failed
 	because Playwright did not start the Vite server; after configuring its
-	`webServer`, all five browser scenarios passed.
+	`webServer`, all six browser scenarios passed.
 - `npm test`: PASS, 82/82 tests across 4 files.
 - `npm run typecheck`: PASS.
 - `npm run build`: PASS.

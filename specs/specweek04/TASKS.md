@@ -59,7 +59,7 @@ Timeout-phase telemetry and backoff-contract follow-up on 2026-09-28:
 `tests/ai.test.ts` passed 33/33, `npm test` passed 82/82, and
 `npm run typecheck` plus `npm run build` passed.
 
-## Final model smoke and documentation reconciliation — 2026-09-29
+## Model smoke and documentation reconciliation checkpoint — 2026-09-29
 
 - [x] W04-T012 Allow explicit single-model selection of
   `gemini-3.1-flash-lite` without changing the default 3.8 → 3.7 → 3.6 → 3.5
@@ -67,12 +67,13 @@ Timeout-phase telemetry and backoff-contract follow-up on 2026-09-28:
 - [x] W04-T013 Run bounded live Advice flows with the configured single
   model. Five requests completed the real stats-tool round-trip and returned
   schema-valid results; three other attempts timed out. This verifies repeated
-  use of 3.1 Flash Lite, not the other models or live fallback.
+  use of 3.1 Flash Lite, not availability of the other models or a successful
+  live fallback response.
 - [x] W04-T014 Reconcile the W04 spec, provider contract, evals, evidence,
   usage log, plan, tasks and README with current code, test coverage and live
   results. No code or secret configuration was changed during this task.
 
-Final local verification on 2026-09-29: `npm exec -- vitest run
+Verification checkpoint on 2026-09-29: `npm exec -- vitest run
 tests/ai.test.ts` passed 33 tests; `npm run typecheck` passed; `npm test`
 passed 82 tests across 4 files; `npm run build` passed; `npm run test:e2e`
 passed 5/5 Playwright tests after configuring Playwright to start the Vite
@@ -80,3 +81,12 @@ server automatically. All currently defined repository validation commands
 pass. The fake fallback tests exercise 503 transitions; they do not
 individually cover provider 404, network-error fallback, or each 500/502
 status.
+
+## Subsequent verification update — 2026-09-29
+
+The later browser run passed all 6/6 Playwright tests, including the AI Advice
+browser flow with mocked API routes. One bounded live request recorded an actual
+3.8 → 3.1 fallback transition; both 3.1 attempts returned 503, so no successful
+fallback response is confirmed. This supersedes the earlier 5/5 E2E count and
+the then-current statement that no live fallback transition had been observed;
+the dated results above remain accurate for their checkpoint.

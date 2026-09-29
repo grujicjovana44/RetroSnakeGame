@@ -11,10 +11,12 @@ Status update — 2026-09-29: the default fallback chain remains
 `gemini-3.5-flash`. `gemini-3.1-flash-lite` is now an explicitly allowed
 single-model selection. The local usage history records five successful live
 two-step Advice requests and three timeouts for that model; live availability
-of the other chain members and live fallback are still unverified. The official
-pricing page lists free-tier input/output for 3.1 Flash Lite, but the account's
-actual billing tier and quota have not been checked. Gemma is not implemented;
-the accepted live checks used Gemini.
+of the other chain members remains unverified. A later bounded probe recorded
+one live transition from 3.8 to 3.1, but both 3.1 attempts returned 503, so a
+successful live fallback is not confirmed. The official pricing page lists
+free-tier input/output for 3.1 Flash Lite, but the account's actual billing
+tier and quota have not been checked. Gemma is not implemented; the accepted
+live checks used Gemini.
 
 ## Scope
 
@@ -27,7 +29,9 @@ Retain the read-only game-stats tool, existing TypeScript stack, and
 fake-provider approach. Do not add dependencies. A live model is verified
 only when the exact two-step flow succeeds; that gate has passed five times
 for `gemini-3.1-flash-lite`, alongside three timeout results, not for the full
-chain.
+chain. One later live transition from 3.8 to 3.1 is recorded, but the fallback
+model returned 503; successful fallback output and availability of every model
+remain unverified.
 
 ## Decisions and constraints
 
@@ -80,8 +84,9 @@ chain.
 4. CORS is restricted to configured origins; backend errors remain generic.
 5. Evidence distinguishes fake-provider results from live provider results.
   One successful live two-step tool flow is recorded for
-  `gemini-3.1-flash-lite`; all other models and live fallback transitions
-  remain unverified.
+  `gemini-3.1-flash-lite`; availability of the other models and successful live
+  fallback output remain unverified. One 3.8 → 3.1 transition was observed, but
+  the fallback attempts returned 503.
 6. No dependency, package script, API key, database, or cloud storage is added.
   The Git-ignored `server/ai-usage.local.json` file is the explicitly allowed
   local usage report; it must remain private, bounded, and free of session
@@ -98,6 +103,8 @@ API returned high-demand 503 for direct 3.8/3.7 requests and other candidates
 did not return usable text. On 2026-09-29, 3.1 Flash Lite first timed out on
 two attempts and then completed one successful Advice tool round-trip. This
 does not prove permanent availability, free-tier eligibility for a particular
-account, or live fallback. The public price table lists free-tier input/output
-for 3.1 Flash Lite, but this account's billing tier and quota remain
-unverified. Provider logging is limited to sanitized attempt metadata.
+account, or a successful live fallback. A later bounded probe did execute a
+3.8 → 3.1 transition, but both 3.1 attempts returned 503; availability of all
+chain members remains unverified. The public price table lists free-tier
+input/output for 3.1 Flash Lite, but this account's billing tier and quota
+remain unverified. Provider logging is limited to sanitized attempt metadata.

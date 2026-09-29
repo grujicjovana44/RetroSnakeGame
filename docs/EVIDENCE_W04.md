@@ -1,9 +1,10 @@
 # W04 Evidence — RetroSnake AI Advice
 
 Napomena o vremenskoj liniji: sekcije sa datumom 2026-09-28 su istorijski
-rezultati. Najnoviji status je u odeljku "Mentor review reconciliation and
-live verification — 2026-09-29"; on supersedes raniju tvrdnju da nijedan live
-advice poziv nije uspeo.
+rezultati. Odeljak "Mentor review reconciliation and live verification —
+2026-09-29" dokumentuje raniju dnevnu proveru; najnoviji browser i fallback
+status je u završnom odeljku "AI browser E2E and controlled live fallback —
+2026-09-29".
 
 ## Scenario
 
@@ -197,8 +198,9 @@ nije potvrđen. Key se ne unosi u repo ili chat.
 - None produced usable text, so the two-step `get_game_session_stats` flow was
   not sent. No live model was selected and no live fallback success is claimed.
   Additional calls were stopped to respect the bounded smoke-test budget.
-- Controlled fallback transitions are proven by fake-provider tests only;
-  they are not live provider evidence.
+- At the time of this 2026-09-28 probe, controlled fallback transitions were
+  proven by fake-provider tests only; no live transition had yet been recorded.
+  See the later 2026-09-29 controlled live fallback probe below.
 
 ## Known limitation
 
@@ -215,11 +217,11 @@ prolazom i treba da je dopune Jovana i Jelena.
 | Review statement | Current repository/evidence | Finding |
 | --- | --- | --- |
 | `server/server.ts` hardcodes `gemini-3.8-flash`; no chain exists | Server reads `GEMINI_MODEL_CHAIN`, parses the backend allowlist and creates providers per model. The default chain remains 3.8 → 3.7 → 3.6 → 3.5. The current local environment selects only `gemini-3.1-flash-lite`. | Stale for current code. `GeminiAdviceProvider` still has a 3.8 constructor default, but the server passes the configured model explicitly. |
-| Fallback chain, `fallbackUsed`, and tests are missing | Service has sequential per-model attempts, a shared 15-second deadline, bounded retry/fallback, and `fallbackUsed`. Fake tests cover 3.8 → 3.7, 3.8 → 3.7 → 3.6, exhausted chain, and no-fallback cases. | Implemented and locally tested; live fallback is not verified. |
+| Fallback chain, `fallbackUsed`, and tests are missing | Service has sequential per-model attempts, a shared 15-second deadline, bounded retry/fallback, and `fallbackUsed`. Fake tests cover 3.8 → 3.7, 3.8 → 3.7 → 3.6, exhausted chain, and no-fallback cases. | Implemented and locally tested; one live 3.8 → 3.1 transition was later recorded, but the fallback model returned 503 and no live fallback success is verified. |
 | `models.list` does not prove generation/tool calling | Correct. It proves listing/authentication only. | The private local usage report records five successful Advice requests for `gemini-3.1-flash-lite` on 2026-09-29; they completed the real tool round-trip and passed response validation. |
 | Live 3.8 returned high-demand 503 | The 2026-09-28 bounded probe recorded provider 503 for 3.8 (and 3.7). | Historical provider availability result; not the current selected model's result. |
 | Earlier alternate-model attempts were not classified | The 3.1 timeout log recorded two local timeout attempts and phases; a later 3.1 request succeeded. | The observed attempts are classified below. They do not establish a permanent availability guarantee. |
-| Contract/evidence should wait for an exact live model success | The local usage report records five 3.1 Flash Lite successes and three timeouts. | The docs record repeated live success for this model and keep other models/live fallback unverified. |
+| Contract/evidence should wait for an exact live model success | The local usage report records five 3.1 Flash Lite successes and three timeouts. | The docs record repeated live success for this model; availability of every chain member and a successful fallback response remain unverified. |
 | Provider debug logs expose session/tool/game/raw provider data | `server/provider.ts` contains no provider-content console logging; server-level advice telemetry contains sanitized fields only. Usage telemetry tests exclude session IDs and stack text. | Stale for current implementation. Source inspection confirms sanitization; no process-console capture test was run. |
 | Gemma needs a separate adapter, not a model-string swap | The accepted final test used the existing Gemini API key and Gemini model. | Gemma was not implemented or used for this live result. No Gemma capability is claimed. |
 
@@ -303,9 +305,10 @@ claim is part of this evidence.
 - `npm run typecheck`: PASS.
 - `npm test`: PASS, 82 tests across 4 files.
 - `npm run build`: PASS.
-- `npm run test:e2e`: PASS, 5 Playwright tests. The initial rerun failed all
+- `npm run test:e2e`: PASS, 6 Playwright tests. The initial rerun failed all
   5 tests because the configured frontend URL had no server listening; adding
-  Playwright `webServer` startup fixed the test setup. All 5 passed afterward.
+  Playwright `webServer` startup fixed the test setup. All 5 then-existing tests
+  passed afterward; the later AI Advice browser scenario also passed.
 - No code was changed during this documentation reconciliation. The code
   changes enabling explicit 3.1 Flash Lite selection and its parser test were
   already present and were included in these checks.
@@ -323,3 +326,27 @@ successful: the private report records five successes and three timeouts for
 project-level 400/404/429/503 errors across multiple keys/models. Therefore the
 implemented bounded-retry/safe-failure controls pass, while uninterrupted
 provider availability is not claimed.
+
+## AI browser E2E and controlled live fallback — 2026-09-29
+
+- `npm run test:e2e -- --grep "requests and renders AI advice"`: PASS, 1/1.
+  The browser completed a deterministic game, sent game statistics to the
+  mocked session route, passed the returned `sessionId` to the mocked Advice
+  route, and rendered the summary and recommendation. This verifies the
+  browser UI/API contract; the mocked routes do not verify backend execution
+  or live provider behavior.
+- A single bounded live Advice request used `gemini-3.8-flash` →
+  `gemini-3.1-flash-lite` at `2026-09-29T19:22:13Z`. Telemetry recorded 3.8
+  initial and retry attempts returning 503, then an actual fallback attempt
+  and retry on 3.1, also returning 503. The request ended with
+  `status=provider_error`, `fallbackUsed=true`, four attempts and 11,152 ms;
+  no Advice response was produced. Token metadata was 214 prompt, 52 output,
+  266 total. The sanitized usage record is persisted in the git-ignored local
+  report; no key or provider content is included here.
+- This probe confirms one live model-chain transition was executed, but it
+  does not confirm successful fallback output or availability of every chain
+  member. The successful live Advice calls previously recorded remain
+  successes for `gemini-3.1-flash-lite` without fallback.
+- AI Studio screenshots from the package support claims about user-visible
+  results and provider usage. The dashboard shows aggregates and is not, by
+  itself, evidence of the complete browser E2E AI flow.

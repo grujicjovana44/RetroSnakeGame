@@ -51,6 +51,54 @@ test("shows Game Over after collision and restarts without reloading", async ({ 
   await expect(restartButton).toBeHidden();
 });
 
+test("requests and renders AI advice after game over", async ({ page }) => {
+  let sessionPayload: unknown;
+  let advicePayload: unknown;
+  let sessionRequests = 0;
+  let adviceRequests = 0;
+
+  await page.route("**/api/game/session", async (route) => {
+    sessionRequests += 1;
+    sessionPayload = route.request().postDataJSON();
+    await route.fulfill({ json: { sessionId: "e2e-session-id" } });
+  });
+  await page.route("**/api/ai/advice", async (route) => {
+    adviceRequests += 1;
+    advicePayload = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        success: true,
+        advice: {
+          summary: "Partija je završena posle sudara.",
+          recommendation: "Planiraj sledeći pravac pre nego što uzmeš hranu.",
+          category: "strategy",
+        },
+      },
+    });
+  });
+
+  await page.keyboard.press("ArrowUp");
+  await page.clock.runFor(15 * 150);
+  await expect(page.locator("#status")).toContainText("game over");
+  await page.getByRole("button", { name: "AI Advice" }).click();
+
+  await expect(page.locator("#ai-advice-summary")).toHaveText(
+    "Partija je završena posle sudara.",
+  );
+  await expect(page.locator("#ai-advice-recommendation")).toHaveText(
+    "Planiraj sledeći pravac pre nego što uzmeš hranu.",
+  );
+  expect(sessionPayload).toEqual(expect.objectContaining({
+    score: expect.any(Number),
+    durationSeconds: expect.any(Number),
+    collisions: 1,
+    foodCollected: expect.any(Number),
+  }));
+  expect(advicePayload).toEqual({ sessionId: "e2e-session-id" });
+  expect(sessionRequests).toBe(1);
+  expect(adviceRequests).toBe(1);
+});
+
 test("saves a new High Score and restores it after refresh", async ({ page }) => {
   await page.keyboard.press("ArrowUp");
   await page.clock.runFor(13 * 150);

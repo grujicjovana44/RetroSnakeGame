@@ -12,7 +12,10 @@ Configuration: GEMINI_MODEL_CHAIN in server/.env; it may contain only a
   allowlist member. The current local smoke configuration selects only
   gemini-3.1-flash-lite. The local usage report contains five successful
   two-step requests and three timeouts for that model on 2026-09-29; this does
-  not verify the other candidates or live fallback.
+  not verify availability of the other candidates or a successful live
+  fallback response. A bounded 2026-09-29 probe recorded one transition from
+  gemini-3.8-flash to gemini-3.1-flash-lite, but both attempts on 3.1 returned
+  503.
 
 Zašto je ovaj model dovoljan:
   Lanac daje ograničen failover kada izabrani model privremeno nije dostupan.

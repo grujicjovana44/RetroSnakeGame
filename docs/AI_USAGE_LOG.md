@@ -120,3 +120,22 @@ raw provider response is retained.
 | Free-tier/billing check | Check whether model use is free and record the evidence. | Checked official Gemini pricing and billing documentation; project account is not authenticated here. | Official pricing lists free input/output for `gemini-3.1-flash-lite`; actual project tier, quota and charges remain unverified. Owner can check AI Studio Projects, Usage and Rate Limits. |
 | AI Studio Usage screenshots | Use the supplied dashboard screenshots to supplement local telemetry. | Read the visible project/model/error overview without inferring unreadable exact graph counts. | Screenshots show Gemini 3.1 Flash Lite and Gemini 3.8 Flash activity, multiple API keys, and 400 BadRequest / 404 NotFound / 429 TooManyRequests / 503 ServiceUnavailable categories. They are project-level aggregates, do not show billing tier, and are not archived in the repository. |
 | Gemma option | Clarified that the immediate goal was a live call through the existing key, not local inference. | Recorded Gemma as considered but not implemented or used. | The successful live provider is Gemini; no Gemma API capability is claimed. |
+
+## Subsequent verification update — 2026-09-29
+
+This update supersedes the earlier same-day statement that Playwright was not
+rerun and that live fallback had not been observed. Those statements remain
+accurate for their original checkpoints.
+
+- `npm run test:e2e`: PASS, 6/6. The AI Advice browser test uses mocked
+	session/advice API routes; it verifies the browser request and rendering
+	path, not backend/provider execution.
+- One bounded live request at `2026-09-29T19:22:13Z` used the 3.8 → 3.1
+	chain. Both 3.8 attempts returned 503, then the real fallback attempt and
+	retry on 3.1 also returned 503. Telemetry recorded `fallbackUsed=true`,
+	four attempts and final `provider_error`; no fallback Advice response was
+	produced. The sanitized result is in the git-ignored local usage report.
+- This confirms one live routing transition. Successful fallback output and
+	availability of every model in the chain remain unverified. The supplied AI
+	Studio screenshots show project aggregates and are not standalone proof of
+	the complete browser E2E flow.
