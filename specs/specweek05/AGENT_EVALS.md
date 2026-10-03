@@ -1,7 +1,8 @@
 # W05 Agent Evaluations
 
-**Status:** Backend, UI, and the first live smoke are documented; pair review
-and final review remain pending.
+**Status:** Backend, UI, fake-first evaluations and the first live smoke are
+documented. Reciprocal pair review and final human review were completed on
+2026-10-03; results are recorded in `EVIDENCE_W05.md`.
 
 | ID | Scenario | Scripted path | Expected outcome and evidence |
 |---|---|---|---|

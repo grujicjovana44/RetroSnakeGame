@@ -1,8 +1,9 @@
 # W05 Evidence: AI Practice Plan
 
-**Status:** Approval, W04 baseline, W05 fake-first verification, and the first
-successful live development smoke are recorded below. Pair review and final
-completion review remain pending.
+**Status:** Approval, W04 baseline, W05 fake-first verification, the first
+successful live development smoke, reciprocal pair review, and final human
+review are recorded below. All items in the completion review checklist are
+complete as of 2026-10-03.
 
 ## Index
 
@@ -95,8 +96,8 @@ Game-over UI
 
 ## Agent flow
 
-Link: [`AGENT_FLOW.md`](AGENT_FLOW.md). Confirm actual implementation matches
-the flow; document deviations here before claiming acceptance.
+Link: [`AGENT_FLOW.md`](AGENT_FLOW.md). The implementation was reviewed against
+the documented flow; observed limitations are recorded below.
 
 ## Provider/model
 
@@ -222,12 +223,12 @@ E14 test `aborts an active provider at total deadline and on client cancellation
 
 ```text
 Eval ID: E14
-Run class: fake
-Elapsed/deadline: [ ] / 30,000 ms
-Provider request aborted: [ ]
-No later model/tool call: [ ]
-Stop reason: deadline
-Test name/output: [pending]
+Run class: fake automated test
+Test: `aborts an active provider at total deadline and on client cancellation`
+Deadline branch: HTTP 502; stop reason `deadline`; providerAttemptCount 1;
+toolCallCount 0; active fake provider request aborted; no retry or later tool
+call. The test uses the configured 30,000 ms run deadline; an exact measured
+elapsed duration is not recorded in the available test evidence.
 ```
 
 ## Test results
@@ -272,10 +273,35 @@ Test name/output: [pending]
 
 | Iteration | Driver | Reviewer | Concrete contribution by Driver | Concrete contribution by Reviewer | Tasks reviewed | Date/evidence |
 |---|---|---|---|---|---|---|
-| 1 | Pending team confirmation | Pending team confirmation | Pending | Pending | Pending | Pending |
-| 2 (roles swapped) | Pending team confirmation | Pending team confirmation | Pending | Pending | Pending | Pending |
+| 1 | Jovana Grujic | Jelena Kantarevic | Defined the agent limits and completed the W05 requirements concerning bounded agent behavior. Both members jointly defined the user goal and answered the SPEC's ten pre-implementation questions. | Reviewed Jovana's agent limits and the W05 requirements for that area. | User goal, ten pre-implementation questions, agent limits and related W05 requirements. | 2026-10-03; team-confirmed activity. See today's verification record below. |
+| 2 (roles swapped) | Jelena Kantarevic | Jovana Grujic | Created the W05 Markdown documents to answer the assignment requirements and questions. | Reviewed Jelena's W05 documents; both members tested the project together during a call. | W05 Markdown artifacts and project tests, as reported by the team. | 2026-10-03; team-confirmed activity. See today's verification record below. |
 
-Both members must independently answer and reviewer must verify:
+### Team-reported verification (2026-10-03)
+
+The team confirms that the following project checks and application review were
+completed today. These results are recorded from the team's report; they were
+not rerun during this documentation update.
+
+| Command/action | Reported result |
+|---|---|
+| `npm exec -- vitest run tests/agent.test.ts --reporter=verbose` | Passed: 1 file, 61 tests. |
+| `npm run typecheck` | Passed. |
+| `npm test` | Passed: 5 files, 143 tests, including W04 regressions. |
+| `npm run build` | Passed. |
+| `npm run test:e2e` | Passed: 12 tests, including W03/W04 regression and W05 UI coverage. |
+| `npm run test:e2e -- --grep "excludes pause and game-over wait"` | Passed: 1 test (E31). |
+| `npm run test:e2e -- --grep "fixed Practice Plan goal controls"` | Passed: 1 test (E32). |
+| Start backend in one terminal: `npm run dev:backend` | Application started for manual verification. |
+| Start frontend in another terminal: `npm run dev -- --host 127.0.0.1` | Application started for manual verification. |
+| One completed game, select one goal, click Practice Plan once | One live development run; E07 records Gemini `gemini-3.1-flash-lite`, 3 agent steps, 3 provider attempts, 0 retries, 2 tool calls, 25,678 ms, HTTP 200, `goal_completed`. No additional live run is claimed. |
+
+The live-run counts above refer to the same run recorded in `AI_USAGE_LOG.md`,
+not an additional provider call. No credentials or private session/game data
+are included here.
+
+The role rotation and contributions above are recorded from the team's report.
+Both members have submitted their answers below. The reviewer must verify
+them against the code and test evidence before marking pair review complete.
 
 1. Why is `evaluate_practice_goal` the right tool, and why is it the only
    allowed tool?
@@ -285,19 +311,116 @@ Both members must independently answer and reviewer must verify:
    deadline?
 5. How does the test prove a rejected proposal did not execute the tool?
 
-Record each member's concise answers and the test/source evidence after review;
-do not mark understanding complete before both can explain it.
+### Submitted answers (2026-10-03)
+
+Both members submitted answers in their own words and reviewed each other's
+answers against the cited source and test evidence; the reciprocal verification
+is recorded below.
+
+#### Jovana Grujic
+
+1. **Why this is the right and only tool:** The agent's problem is to decide
+  whether a numeric target is realistic for the next game given the completed
+  game. The model should not grade its own proposal. The evaluator is local,
+  deterministic and read-only: it computes the `too_easy`, `realistic` or
+  `too_ambitious` rating, derived metrics and stable evidence IDs. The model
+  proposes the candidate and may revise it once. This is the smallest useful
+  tool set; extra tools increase the attack surface, while the approved
+  constitution amendment permits only this tool. It has no network, file or
+  write access, and the registry is fixed in code.
+  Evidence: `server/agentTools.ts`, `specs/specweek05/TOOL_CONTRACTS.md`.
+2. **Why these limits:** Step 1 proposes and evaluates a candidate; Step 2
+  finalizes or requests one revision; Step 3 can only finalize. This is the
+  smallest bound that supports Candidate → Evaluate → Revise → Evaluate →
+  Final. Two tool calls permit the first evaluation and one revision. Six
+  provider attempts are the global ceiling of three steps times an initial
+  attempt plus one retry. The run also has a 30-second deadline, a 10-second
+  provider-attempt timeout and a 250 ms tool watchdog. The recorded live run
+  used 3 steps, 3 attempts and 2 tool calls in 25.7 seconds.
+  Evidence: constants in `server/agent.ts` and the limits table in
+  `specs/specweek05/SPEC.md`.
+3. **Where validation occurs:** `runPracticePlan` validates the request UUID,
+  selected goal, session existence and stored statistics before model/tool
+  calls. The model decision is parsed with `agentModelDecisionSchema`. Unknown
+  tool names stop as `unknown_tool`; strict argument parsing, selected-goal
+  equality and candidate range are checked before dispatch. The orchestrator
+  binds the session ID from the original request, and the tool independently
+  checks it against `requestSessionId`. The dispatcher, attempt counter and
+  `ensureRunActive()` enforce tool/provider budgets and the deadline. Tool
+  output is recomputed and compared by `validatePracticeEvaluation`; the final
+  plan is checked by `isValidFinal` against the latest evaluation.
+  Evidence: `server/agent.ts`, `server/agentContracts.ts`,
+  `server/agentTools.ts`.
+4. **Where the run stops:** Repeated calls are detected using a key containing
+  tool, session, goal and target, before execution. A tool request at Step 3
+  stops as `max_steps`; the independent dispatcher returns `tool_limit` before
+  invoking the executor when two tool calls are already used. The 30-second
+  deadline aborts the active provider request and `ensureRunActive()` checks
+  the budget before work. Deadline failure maps to a generic HTTP 502.
+  Evidence: `server/agent.ts`, `server/agentTools.ts`,
+  `specs/specweek05/AGENT_FLOW.md`.
+5. **How rejected execution is proven:** Tests inject a `toolExecutor` that
+  increments its own execution counter. Unknown-tool and invalid-argument
+  tests assert both `result.evidence.toolCallCount === 0` and
+  `toolExecutions === 0`. Repeated-call tests keep the executor at one call;
+  the max-steps test confirms exactly two calls and that the third proposal
+  does not execute. Thus the tests verify actual executor calls, not only the
+  HTTP error status.
+  Evidence: `tests/agent.test.ts`, `specs/specweek05/AGENT_EVALS.md`.
+
+#### Jelena Kantarevic
+
+1. **Why this is the right and only tool:** The local evaluator checks whether
+  the proposed next-game target is too easy, realistic or too ambitious using
+  only the completed game's statistics and the numeric target. The AI proposes
+  the number; application code performs the deterministic evaluation. Only
+  this read-only tool is allowed because it is the smallest set needed for the
+  scenario. It cannot change the game or score, access files or use the
+  network. The fixed code registry prevents the model from calling anything
+  else. Evidence: `server/agentTools.ts`,
+  `specs/specweek05/TOOL_CONTRACTS.md`.
+2. **Why these limits:** Step 1 proposes and evaluates; Step 2 finalizes or
+  makes one revision; Step 3 can only finalize. This allows one revision but
+  prevents an unbounded loop. There can be two tool calls: the first
+  evaluation and one revised evaluation. Each of the three model steps can
+  have at most two provider attempts, giving a hard maximum of six. A retry
+  repeats a provider request; it is not a new agent step. Evidence:
+  `server/agent.ts`, `specs/specweek05/SPEC.md`.
+3. **Where validation occurs:** Zod schemas validate the request and model
+  decision. The orchestrator checks the tool allowlist, arguments, selected
+  goal, range and repeated calls. The tool checks session scope and its
+  evaluation result. The final plan must match the latest evaluation and cite
+  evidence returned by that tool. In short, the model's output is an
+  untrusted proposal; the backend validates before execution or display.
+  Evidence: `server/agentContracts.ts`, `server/agent.ts`,
+  `server/agentTools.ts`.
+4. **Where the run stops:** The orchestrator rejects a repeated normalized
+  tool call, rejects tool requests at Step 3 as `max_steps`, and the
+  dispatcher stops execution at the two-call tool limit. The 30-second total
+  deadline aborts an active provider request. The backend controls these
+  stops rather than relying on the model. Evidence: `server/agent.ts`,
+  `server/agentTools.ts`, `specs/specweek05/AGENT_FLOW.md`.
+5. **How rejected execution is proven:** E02 and E03 cover unknown tools and
+  invalid arguments. Tests instrument the actual tool executor and assert
+  zero calls; an HTTP error alone would not prove that. Evidence:
+  `tests/agent.test.ts`, `specs/specweek05/AGENT_EVALS.md`.
+
+**Reciprocal reviewer verification (2026-10-03):** Jelena Kantarevic reviewed
+Jovana Grujic's answers, and Jovana Grujic reviewed Jelena Kantarevic's
+answers. The team reports that both reviews are complete. The answers are
+recorded above; no corrections were reported.
 
 ## Completion review
 
 - [x] Success flow evidence present (one live development run; E01/E07).
-- [ ] Rejected-tool evidence proves zero execution for rejected proposal.
-- [ ] Failure trace and stop reason present.
+- [x] Rejected-tool evidence proves zero execution for rejected proposal (E02/E03).
+- [x] Failure trace and stop reason present (E04/E11/E14 fake-test traces).
 - [x] Fake and live results clearly separated.
 - [x] All required validation commands actually passed.
-- [ ] Pair rotation and five-question review completed.
-- [ ] Known limitations retained; no unsupported claims.
-- [ ] Human review/approval recorded.
+- [x] Pair rotation and reciprocal five-question review completed (2026-10-03).
+- [x] Known limitations retained; no unsupported claims in the recorded traces.
+- [x] Human scope approval recorded (2026-10-03).
+- [x] Human final review and acceptance recorded by Jelena Kantarevic and Jovana Grujic (2026-10-03).
 
 ## Optional 7-minute demo outline
 

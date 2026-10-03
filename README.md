@@ -2,7 +2,7 @@
 
 A modern take on the classic **Snake game**, featuring procedural obstacles, standard and golden food, score tracking, High Score persistence, and a strictly typed TypeScript architecture.
 
-> 🎮 W03 core game with the W04 post-game AI Advice feature and private local usage report.
+> 🎮 W03 core game with W04 AI Advice and the W05 bounded AI Practice Plan.
 
 ---
 
@@ -84,8 +84,10 @@ The flow is UI → `POST /api/ai/practice-plan` → bounded orchestrator →
 provider-neutral model interface and Gemini adapter → allowlisted evaluator.
 The Gemini key stays on the server; the browser receives only validated plan
 data or a generic safe error. Each run is limited to 3 agent steps, 2 tool
-calls, 6 provider attempts, a 30-second deadline, and at most one retry per
-step.
+calls, 6 provider attempts, a 30-second total deadline, a 10-second per-call
+timeout, a 250 ms local-tool watchdog, and at most one retry per step. The
+feature uses one allowlisted Gemini model per run; it does not fall back across
+providers.
 
 The backend validates tool proposals, evaluator results, and final plan
 evidence. Only the fixed evaluator is callable, and logs omit prompts, secrets,
@@ -93,10 +95,11 @@ session identifiers, game statistics, and raw provider content. The game does
 not provide collision history, session ownership is anonymous, and a run can
 take up to 30 seconds.
 
-To enable the provider, set `GEMINI_API_KEY` and `GEMINI_MODEL_CHAIN` in the
-ignored `server/.env` file, then start `npm run dev:backend` and `npm run dev`
-in separate terminals. Verify changes with `npm run typecheck`, `npm test`,
-`npm run build`, and `npm run test:e2e`.
+To enable live AI Advice and Practice Plan, set `GEMINI_API_KEY` and, optionally,
+`GEMINI_MODEL_CHAIN` in the ignored `server/.env` file. The W05 Practice Plan
+uses the first configured allowlisted Gemini model. Start `npm run dev:backend`
+and `npm run dev` in separate terminals. Verify changes with `npm run typecheck`,
+`npm test`, `npm run build`, and `npm run test:e2e`.
 
 W05 documents: [SPEC](specs/specweek05/SPEC.md) ·
 [PLAN](specs/specweek05/PLAN.md) · [TASKS](specs/specweek05/TASKS.md) ·
@@ -255,12 +258,28 @@ RetroSnakeGame/
 │       ├── TASKS.md
 │       ├── EVIDENCE.md
 │       └── evidence/ (screenshot i browser snimak)
-│   └── specweek04/
+│   ├── specweek04/
+│   │   ├── PLAN.md
+│   │   └── TASKS.md
+│   └── specweek05/
+│       ├── SPEC.md
 │       ├── PLAN.md
-│       └── TASKS.md
+│       ├── TASKS.md
+│       ├── AGENT_FLOW.md
+│       ├── TOOL_CONTRACTS.md
+│       ├── AGENT_EVALS.md
+│       ├── EVIDENCE_W05.md
+│       ├── AI_USAGE_LOG.md
+│       ├── LIVE_SMOKE_RUNBOOK.md
+│       └── DEMO_SCRIPT.md
 │
 ├── server/
 │   ├── .env.example
+│   ├── agent.ts
+│   ├── agentContracts.ts
+│   ├── agentModel.ts
+│   ├── agentTools.ts
+│   ├── geminiAgentModel.ts
 │   ├── api.ts
 │   ├── httpSecurity.ts
 │   ├── provider.ts
@@ -275,6 +294,7 @@ RetroSnakeGame/
 │   └── types.ts
 │
 ├── tests/
+│   ├── agent.test.ts
 │   ├── game.test.ts
 │   ├── gameConfig.test.ts
 │   ├── highScore.test.ts
@@ -308,6 +328,10 @@ RetroSnakeGame/
 * `gameConfig.test.ts` — configuration validation tests
 * `highScore.test.ts` — High Score persistence helper tests
 * `ai.test.ts` — AI reliability, security helper, and usage aggregation tests
+* `agent.test.ts` — W05 bounded-agent, tool validation, limits, provider adapter, and failure-path tests
+* `agent.ts` — W05 bounded orchestrator, retry/deadline enforcement, and final evidence validation
+* `agentTools.ts` — deterministic read-only Practice Plan evaluator and tool dispatcher
+* `geminiAgentModel.ts` — backend Gemini adapter for W05 model decisions
 
 ---
 
@@ -316,7 +340,10 @@ RetroSnakeGame/
 Before every commit or merge, the complete verification pipeline can be run with:
 
 ```bash
-npm run typecheck && npm test && npm run build
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
 ```
 
 The project should pass:
@@ -324,24 +351,7 @@ The project should pass:
 * ✅ TypeScript type checking with no errors
 * ✅ all unit tests
 * ✅ all integration tests
-
----
-
-## 📋 Verification
-
-The correctness and quality of the implementation can be verified using:
-
-```bash
-npm run typecheck
-```
-
-and:
-
-```bash
-npm test
-```
-
-This verifies both **static type safety** and the behavior of the game's core logic.
+* ✅ Playwright end-to-end browser tests
 
 ---
 

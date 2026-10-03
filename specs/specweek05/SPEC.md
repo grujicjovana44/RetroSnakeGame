@@ -2,13 +2,14 @@
 
 ## Status and source of truth
 
-Status: **APPROVED — human approval recorded 2026-10-03.** The W05 feature and
-the narrow constitution amendment below are approved for implementation.
+Status: **APPROVED AND IMPLEMENTED — human approval and final review recorded
+2026-10-03.** The implementation, verification results, pair review and final
+acceptance are documented in `EVIDENCE_W05.md`.
 
 Precedence: `docs/GAME_SPEC.md` is authoritative for game behavior;
 `docs/AI_FEATURE_SPEC.md` and `docs/AI_PROVIDER_CONTRACT.md` remain authoritative
 for W04 AI Advice and must not be changed by this feature. This document defines
-only the proposed W05 Practice Plan. The W05 assignment is the acceptance
+only the W05 Practice Plan. The W05 assignment is the acceptance
 source for the agentic requirements.
 
 ## User value and bounded scenario

@@ -4,10 +4,12 @@
 amendment are approved; T001 records that decision. A task is complete only
 with its acceptance evidence.
 
-**Progress:** T001–T013 complete; T014 partially complete (first live smoke
-passed; development budget remains); T015 pair review and T016 final review
-remain open. `PLAN.md` contains the required security-control mapping and the
-full validation evidence for T013.
+**Progress:** T001–T013 complete; T014 complete (one development live smoke
+is recorded; 1 of 15 development runs used, with no final-demo run claimed).
+T015 complete: evaluation cases and test bindings, pair roles and contributions,
+both members' answers, and reciprocal review are recorded. T016 complete:
+human final review and acceptance recorded on 2026-10-03. `PLAN.md` contains
+the security-control mapping and recorded validation evidence for T013.
 
 | ID | Task | Depends on | Planned files | Acceptance evidence |
 |---|---|---|---|---|
@@ -24,7 +26,7 @@ full validation evidence for T013.
 | W05-T011 | Complete W05 fake-first unit and API test matrix | T003-T010 | `tests/agent.test.ts`, `specs/specweek05/AGENT_EVALS.md` | Every assignment §32 row represented; rejected tool/args assert `toolCallCount === 0`; W04 suite remains green |
 | W05-T012 | Add browser coverage for Practice Plan and W04 regression | T010 | `e2e/game.spec.ts` | Game-over visibility, both goal payloads, success/incomplete/error display, realistic/non-realistic fixed message and validated metrics display, preflight no-metrics state, W04 Advice still works |
 | W05-T013 | Run security review and full required validation gates | T011, T012 | `PLAN.md`, `EVIDENCE_W05.md` | All §41 controls mapped to code and test; typecheck/test/build/E2E pass; no dependency/package changes |
-| W05-T014 | Run limited live smoke only after fake suite passes | T013 | `AI_USAGE_LOG.md`, `EVIDENCE_W05.md` | Within 15 development runs and 3 demo runs; record exact provider/model/status/steps/attempts/tools; no secret or raw prompt |
+| W05-T014 | Run limited live smoke only after fake suite passes | T013 | `AI_USAGE_LOG.md`, `EVIDENCE_W05.md` | One development live run is recorded within the 15-run cap with exact provider/model/status/steps/attempts/tools; no secret or raw prompt. Final-demo runs remain unclaimed and capped at 3. |
 | W05-T015 | Complete evaluation/evidence and rotate pair roles for review | T013; T014 when live available | `AGENT_EVALS.md`, `EVIDENCE_W05.md`, `AI_USAGE_LOG.md` | At least 5 evals, fake/live separated, success/rejected/failure traces and both members' answers to five questions recorded |
 | W05-T016 | Final diff review and completion decision | T015 | W05 docs and changed source/test files | No out-of-scope changes; required gates and evidence present; human accepts completion |
 
