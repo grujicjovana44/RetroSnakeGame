@@ -49,9 +49,29 @@ flowchart TD
   stored metrics stop as `session_data_invalid` with that same public response.
 - The model sees bounded stats `score`, `durationSeconds`, `foodCollected`;
   collision is omitted. It proposes only `{ goal, targetValue }`.
-- Step 1 receives the allowed numeric candidate range but not the rating enum,
-  thresholds or formula. The deterministic tool alone computes `rating`; the
-  model first sees it in the validated tool result supplied to Step 2/3.
+- The frontend captures `gameEndedAt` when the game first reaches
+  `game-over`, subtracts accumulated `pausedMs`, and rounds active-play seconds
+  before submitting the session. Time paused or spent waiting on the game-over
+  screen is excluded from the `survive_longer` baseline.
+- Gemini Step 1 declares only `evaluate_practice_goal` and uses function
+  calling `ANY` with `allowedFunctionNames` restricted to that function; a
+  text-only answer is malformed. Step 2 adds the tool declaration only after
+  a non-realistic rating and combines it with the structured JSON decision
+  schema. After a realistic rating Step 2 has no tool. Step 3 declares no tools
+  and accepts only the structured JSON final/refusal schema.
+- The installed `@google/genai` declaration types `responseJsonSchema` as
+  `unknown` and documents it as JSON Schema format, rather than the SDK
+  `Schema` type. Its JSON Schema constraints are sent with native JSON values:
+  `maxLength` and `maxItems` are numbers.
+- The adapter strips an optional outer Markdown JSON fence before parsing.
+  Empty output, including `MAX_TOKENS`, is `malformed_model_output` unless the
+  provider explicitly reports a safety refusal. It sets thinking to `LOW`
+  because Gemini `maxOutputTokens` includes thinking tokens.
+- Step 1 is instructed to propose a candidate higher than the `sessionFacts`
+  value for the selected goal, within the allowed numeric candidate range. It
+  receives no rating enum, thresholds or formula. The deterministic tool alone
+  computes `rating`; the model first sees it in the validated tool result
+  supplied to Step 2/3.
 - The orchestrator binds the canonical session ID to the tool input. The
   model cannot change session scope or invoke a dynamic function.
 - Tool call is dispatched only after name, schema, goal equality, target range,
@@ -65,6 +85,10 @@ flowchart TD
   attempt increments `providerAttemptCount`; each actual tool execution
   increments `toolCallCount`. A rejected proposal increments neither tool
   executions nor successful tool calls.
+- The sanitized run record includes run-level `providerHttpStatus`: the
+  numeric HTTP status of the latest failed provider attempt, or `null` when
+  that attempt has no HTTP response. It never includes provider error text,
+  headers or response body.
 - Terminal runs never issue another provider or tool call. Cancellation aborts
   the active provider request.
 - Maximums: 3 steps, 2 tools, 6 provider attempts total, 2 attempts per step,
@@ -96,6 +120,24 @@ limiter returns HTTP 429. A provider 429 is a provider failure mapped to HTTP
 503, never to the application's 429; other provider failures map to HTTP 502.
 `goal_unavailable` returns a fixed incomplete response with HTTP 200 and no
 model/tool call.
+If server-side Gemini credentials are not configured, the endpoint returns a
+generic HTTP 503 before provider/tool execution and records no private request
+content.
+The internal stop reason is `provider_unconfigured`.
+
+Tool failure codes map to the single `agentStopReason` taxonomy as follows;
+the runtime mapping is `PRACTICE_TOOL_FAILURE_STOP_REASON` in
+`server/agentTools.ts`:
+
+| Tool failure code | `agentStopReason` | HTTP |
+|---|---|---:|
+| `invalid_tool_args` | `invalid_tool_args` | 502 |
+| `forbidden` | `unauthorized` | 403 |
+| `session_data_invalid` | `session_data_invalid` | 400 |
+| `invalid_tool_result` | `invalid_tool_result` | 502 |
+| `tool_limit` | `tool_limit` | 502 |
+| `tool_error` | `tool_error` | 502 |
+| `tool_timeout` | `tool_timeout` | 502 |
 
 The fixed `goal_unavailable` result is app-generated, not model output:
 
@@ -155,7 +197,11 @@ message. `goal_unavailable` has no evaluation and therefore no tool metrics.
 | `invalid_tool_result` | No | Yes; result not forwarded | HTTP 502 generic safe failure |
 | `provider_timeout` | At most one same-step retry after fixed 200 ms if budget/deadline permit | Yes after eligible retry exhausted/deadline | HTTP 502 generic safe failure |
 | `provider_unavailable` | At most one same-step retry/allowlisted Gemini model secondary attempt after fixed 200 ms if transient | Yes after exhausted | HTTP 502 generic safe failure |
+| `provider_auth_or_quota` | No | Yes | HTTP 502 generic safe failure |
+| `provider_error` | No | Yes | HTTP 502 generic safe failure |
+| `provider_unconfigured` | No | Yes before provider/tool | HTTP 503 generic safe failure |
 | `rate_limit` | At most one same-step retry; absent `Retry-After` uses 200 ms; values <=2,000 ms are waited exactly; values >2,000 ms stop without retry. Wait consumes deadline. | Yes after exhausted | Provider 429 maps to HTTP 503, not HTTP 429 |
+| `provider_attempt_limit` | No | Yes before a seventh provider attempt | HTTP 502 generic safe failure |
 | `malformed_model_output` | No | Yes | HTTP 502 generic safe failure |
 | `invalid_model_proposal` | No | Yes; includes `final` at Step 1 | HTTP 502 generic safe failure |
 | `invalid_final_output` | No | Yes; never completed success | HTTP 502 generic safe failure |
@@ -165,6 +211,7 @@ message. `goal_unavailable` has no evaluation and therefore no tool metrics.
 | `deadline` | No | Yes; abort active request | HTTP 502 generic safe failure |
 | `cancelled` | No | Yes; abort active request | On client disconnect no HTTP response is possible; record terminal status internally without exposing details |
 | `goal_completed` | No | Yes, successful terminal state | Render validated completed plan |
+| `plan_incomplete` | No | Yes | HTTP 200 fixed rating-specific incomplete response plus validated evaluation |
 | `goal_unavailable` | No | Yes, preflight stop | HTTP 200 fixed incomplete response, `targetValue:null`; no provider/tool call |
 | `model_refusal` | No | Yes | Step 1: HTTP 502 generic failure; Step 2/3: HTTP 200 app-generated incomplete result from latest tool evaluation |
 
@@ -186,7 +233,7 @@ and a `steps[]` array. Do not flatten per-step fields onto the run record.
 Each step records only:
 
 ```text
-  run: { runId, status, providerAttemptCount, retryCount, toolCallCount,
+  run: { runId, status, providerHttpStatus, providerAttemptCount, retryCount, toolCallCount,
     stopReason, elapsedMs,
     steps: [{ stepNumber, provider, model, latencyMs, decisionKind,
        status, proposalStatus, toolName, validationOutcome,

@@ -17,6 +17,43 @@ import {
 } from "./types";
 import { getHighScore, saveHighScore } from "./highScore";
 
+type PracticeGoal = "survive_longer" | "collect_more_food";
+type PracticeEvaluation = {
+  goal: PracticeGoal;
+  targetValue: number;
+  rating: "too_easy" | "realistic" | "too_ambitious";
+  metrics: {
+    score: number;
+    durationSeconds: number;
+    foodCollected: number;
+    foodPerMinute: number | null;
+    scorePerFood: number | null;
+    targetRatio: number;
+  };
+};
+type PracticePlanResult =
+  | {
+      success: true;
+      plan: {
+        goal: PracticeGoal;
+        targetValue: number | null;
+        summary: string;
+        recommendation: string;
+        completed: boolean;
+        confidence: "low" | "medium" | "high";
+      };
+      evaluation: PracticeEvaluation | null;
+      incompleteMessage?: string;
+    }
+  | { success: false };
+
+const SAFE_PRACTICE_PLAN_ERROR =
+  "Plan trenutno nije moguće napraviti bezbedno. Pokušajte ponovo kasnije.";
+const REALISTIC_INCOMPLETE_MESSAGE =
+  "Cilj je ocenjen kao realističan, ali plan nije dovršen. Možeš koristiti prikazani cilj za sledeću partiju.";
+const NON_REALISTIC_INCOMPLETE_MESSAGE =
+  "Cilj nije preporučen: alat ga je ocenio kao prelak ili preambiciozan.";
+
 const canvas = document.getElementById("game") as HTMLCanvasElement | null;
 const scoreEl = document.getElementById("score");
 const statusEl = document.getElementById("status");
@@ -25,6 +62,22 @@ const adviceButton = document.getElementById("ai-advice") as HTMLButtonElement |
 const advicePanel = document.getElementById("ai-advice-panel");
 const adviceSummaryEl = document.getElementById("ai-advice-summary");
 const adviceRecommendationEl = document.getElementById("ai-advice-recommendation");
+const practicePlanControls = document.getElementById("practice-plan-controls");
+const practiceGoalSelect = document.getElementById("practice-goal") as HTMLSelectElement | null;
+const practicePlanButton = document.getElementById("practice-plan-button") as HTMLButtonElement | null;
+const practicePlanPanel = document.getElementById("practice-plan-panel");
+const practicePlanStatusEl = document.getElementById("practice-plan-status");
+const practicePlanTargetEl = document.getElementById("practice-plan-target");
+const practicePlanSummaryEl = document.getElementById("practice-plan-summary");
+const practicePlanRecommendationEl = document.getElementById("practice-plan-recommendation");
+const practicePlanMetrics = document.getElementById("practice-plan-metrics");
+const practicePlanRatingEl = document.getElementById("practice-plan-rating");
+const practicePlanScoreEl = document.getElementById("practice-plan-score");
+const practicePlanDurationEl = document.getElementById("practice-plan-duration");
+const practicePlanFoodEl = document.getElementById("practice-plan-food");
+const practicePlanFoodRateEl = document.getElementById("practice-plan-food-rate");
+const practicePlanScoreRateEl = document.getElementById("practice-plan-score-rate");
+const practicePlanTargetRatioEl = document.getElementById("practice-plan-target-ratio");
 const difficultyButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-difficulty]"),
 );
@@ -58,6 +111,119 @@ function isDifficulty(value: string | undefined): value is Difficulty {
   return value === "easy" || value === "normal" || value === "hard";
 }
 
+function isPracticeGoal(value: unknown): value is PracticeGoal {
+  return value === "survive_longer" || value === "collect_more_food";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function parsePracticePlanResult(value: unknown): PracticePlanResult | null {
+  if (!isRecord(value)) return null;
+  if (value.success === false && typeof value.message === "string") {
+    return { success: false };
+  }
+  if (value.success !== true || !isRecord(value.plan)) return null;
+
+  const plan = value.plan;
+  if (!isPracticeGoal(plan.goal) ||
+      (plan.targetValue !== null && !isFiniteNumber(plan.targetValue)) ||
+      typeof plan.summary !== "string" ||
+      typeof plan.recommendation !== "string" ||
+      typeof plan.completed !== "boolean" ||
+      (plan.confidence !== "low" && plan.confidence !== "medium" && plan.confidence !== "high")) {
+    return null;
+  }
+
+  if (value.evaluation === null) {
+    if (plan.targetValue !== null || plan.completed ||
+        plan.summary !== "Za izabrani cilj trenutno nema višeg dostižnog praga." ||
+        plan.recommendation !== "Odigrati novu partiju ili izabrati drugi cilj.") {
+      return null;
+    }
+    return {
+      success: true,
+      plan: {
+        goal: plan.goal,
+        targetValue: null,
+        summary: plan.summary,
+        recommendation: plan.recommendation,
+        completed: false,
+        confidence: plan.confidence,
+      },
+      evaluation: null,
+    };
+  }
+
+  if (!isRecord(value.evaluation)) return null;
+  const rawEvaluation = value.evaluation;
+  if (rawEvaluation.tool !== "evaluate_practice_goal" ||
+      !isPracticeGoal(rawEvaluation.goal) ||
+      !isFiniteNumber(rawEvaluation.targetValue) ||
+      !isFiniteNumber(rawEvaluation.goalBaseline) ||
+      (rawEvaluation.rating !== "too_easy" &&
+       rawEvaluation.rating !== "realistic" &&
+       rawEvaluation.rating !== "too_ambitious") ||
+      !isRecord(rawEvaluation.metrics)) {
+    return null;
+  }
+
+  const metrics = rawEvaluation.metrics;
+  if (!isFiniteNumber(metrics.score) ||
+      !isFiniteNumber(metrics.durationSeconds) ||
+      !isFiniteNumber(metrics.foodCollected) ||
+      (metrics.foodPerMinute !== null && !isFiniteNumber(metrics.foodPerMinute)) ||
+      (metrics.scorePerFood !== null && !isFiniteNumber(metrics.scorePerFood)) ||
+      !isFiniteNumber(metrics.targetRatio)) {
+    return null;
+  }
+  if (plan.goal !== rawEvaluation.goal || plan.targetValue !== rawEvaluation.targetValue) {
+    return null;
+  }
+
+  let incompleteMessage: string | undefined;
+  if (plan.completed) {
+    if (rawEvaluation.rating !== "realistic") return null;
+  } else {
+    if (plan.confidence === "high" || typeof value.incompleteMessage !== "string") return null;
+    incompleteMessage = rawEvaluation.rating === "realistic"
+      ? REALISTIC_INCOMPLETE_MESSAGE
+      : NON_REALISTIC_INCOMPLETE_MESSAGE;
+    if (value.incompleteMessage !== incompleteMessage) return null;
+  }
+
+  return {
+    success: true,
+    plan: {
+      goal: plan.goal,
+      targetValue: plan.targetValue,
+      summary: plan.summary,
+      recommendation: plan.recommendation,
+      completed: plan.completed,
+      confidence: plan.confidence,
+    },
+    evaluation: {
+      goal: rawEvaluation.goal,
+      targetValue: rawEvaluation.targetValue,
+      rating: rawEvaluation.rating,
+      metrics: {
+        score: metrics.score,
+        durationSeconds: metrics.durationSeconds,
+        foodCollected: metrics.foodCollected,
+        foodPerMinute: metrics.foodPerMinute,
+        scorePerFood: metrics.scorePerFood,
+        targetRatio: metrics.targetRatio,
+      },
+    },
+    incompleteMessage,
+  };
+}
+
 function boot(): void {
   const configResult = validateGameConfig(defaultGameConfig);
   if (!configResult.ok) {
@@ -83,8 +249,14 @@ function boot(): void {
   let pendingConfig: GameConfig = configResult.config;
   let timerId: number | undefined;
   let gameStartedAt = Date.now();
+  let gameEndedAt: number | null = null;
+  let pausedAt: number | null = null;
+  let pausedMs = 0;
   let foodCollected = 0;
-  let adviceSessionId: string | null = null;
+  let gameSessionId: string | null = null;
+  let gameSessionPromise: Promise<string> | null = null;
+  let sessionGeneration = 0;
+  let practicePlanRequestGeneration = 0;
 
   function stopLoop(): void {
     if (timerId !== undefined) {
@@ -260,6 +432,8 @@ function boot(): void {
       }
       if (restartButton) restartButton.hidden = true;
       if (adviceButton) adviceButton.hidden = true;
+      if (practicePlanControls) practicePlanControls.hidden = true;
+      if (practicePlanPanel) practicePlanPanel.hidden = true;
       return;
     }
 
@@ -276,6 +450,7 @@ function boot(): void {
       gameContext.textAlign = "start";
 
       if (statusEl) statusEl.textContent = "Status: pauzirano";
+      if (practicePlanControls) practicePlanControls.hidden = true;
       return;
     }
 
@@ -298,6 +473,7 @@ function boot(): void {
     }
     if (restartButton) restartButton.hidden = false;
     if (adviceButton) adviceButton.hidden = false;
+    if (practicePlanControls) practicePlanControls.hidden = false;
   }
 
   function tick(): void {
@@ -313,6 +489,9 @@ function boot(): void {
       return;
     }
 
+    if (nextState.status === "game-over") {
+      gameEndedAt = Date.now();
+    }
     render();
     if (nextState.status === "game-over") {
       stopLoop();
@@ -322,10 +501,19 @@ function boot(): void {
   function restart(): void {
     stopLoop();
     gameStartedAt = Date.now();
+    gameEndedAt = null;
+    pausedAt = null;
+    pausedMs = 0;
     foodCollected = 0;
-    adviceSessionId = null;
+    sessionGeneration += 1;
+    practicePlanRequestGeneration += 1;
+    gameSessionId = null;
+    gameSessionPromise = null;
     if (adviceButton) adviceButton.hidden = true;
+    if (practicePlanControls) practicePlanControls.hidden = true;
     if (advicePanel) advicePanel.hidden = true;
+    if (practicePlanPanel) practicePlanPanel.hidden = true;
+    if (practicePlanButton) practicePlanButton.disabled = false;
     const nextState = createInitialGameState(pendingConfig);
     if (!applyState(nextState)) {
       return;
@@ -333,6 +521,35 @@ function boot(): void {
 
     render();
     timerId = window.setInterval(tick, resolveStartingSpeedMs(pendingConfig));
+  }
+
+  async function getOrCreateGameSessionId(): Promise<string> {
+    if (gameSessionId) return gameSessionId;
+    if (!gameSessionPromise) {
+      const currentGeneration = sessionGeneration;
+      gameSessionPromise = (async () => {
+        const sessionResponse = await fetch(`${BACKEND_URL}/api/game/session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            score: state.score,
+            durationSeconds: Math.round(((gameEndedAt ?? Date.now()) - gameStartedAt - pausedMs) / 1000),
+            collisions: state.collision ? 1 : 0,
+            foodCollected,
+          }),
+        });
+        if (!sessionResponse.ok) throw new Error("session-request-failed");
+        const session = await sessionResponse.json() as { sessionId?: string };
+        if (!session.sessionId || currentGeneration !== sessionGeneration) {
+          throw new Error("missing-or-stale-session-id");
+        }
+        gameSessionId = session.sessionId;
+        return gameSessionId;
+      })().finally(() => {
+        if (currentGeneration === sessionGeneration) gameSessionPromise = null;
+      });
+    }
+    return gameSessionPromise;
   }
 
   async function requestAiAdvice(): Promise<void> {
@@ -347,27 +564,12 @@ function boot(): void {
     if (adviceRecommendationEl) adviceRecommendationEl.textContent = "";
 
     try {
-      if (!adviceSessionId) {
-        const sessionResponse = await fetch(`${BACKEND_URL}/api/game/session`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            score: state.score,
-            durationSeconds: Math.max(0, Math.round((Date.now() - gameStartedAt) / 1000)),
-            collisions: state.collision ? 1 : 0,
-            foodCollected,
-          }),
-        });
-        if (!sessionResponse.ok) throw new Error("session-request-failed");
-        const session = (await sessionResponse.json()) as { sessionId?: string };
-        if (!session.sessionId) throw new Error("missing-session-id");
-        adviceSessionId = session.sessionId;
-      }
+      const sessionId = await getOrCreateGameSessionId();
 
       const adviceResponse = await fetch(`${BACKEND_URL}/api/ai/advice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: adviceSessionId }),
+        body: JSON.stringify({ sessionId }),
       });
       const result = (await adviceResponse.json()) as {
         success: boolean;
@@ -386,6 +588,108 @@ function boot(): void {
     } finally {
       adviceButton.disabled = false;
       adviceButton.textContent = "AI Advice";
+    }
+  }
+
+  function clearPracticePlanOutput(): void {
+    if (practicePlanStatusEl) practicePlanStatusEl.textContent = "";
+    if (practicePlanTargetEl) practicePlanTargetEl.textContent = "";
+    if (practicePlanSummaryEl) practicePlanSummaryEl.textContent = "";
+    if (practicePlanRecommendationEl) practicePlanRecommendationEl.textContent = "";
+    if (practicePlanMetrics) practicePlanMetrics.hidden = true;
+  }
+
+  function renderPracticePlanMetrics(evaluation: PracticeEvaluation): void {
+    const metrics = evaluation.metrics;
+    if (practicePlanRatingEl) practicePlanRatingEl.textContent = evaluation.rating;
+    if (practicePlanScoreEl) practicePlanScoreEl.textContent = String(metrics.score);
+    if (practicePlanDurationEl) practicePlanDurationEl.textContent = `${metrics.durationSeconds} s`;
+    if (practicePlanFoodEl) practicePlanFoodEl.textContent = String(metrics.foodCollected);
+    if (practicePlanFoodRateEl) practicePlanFoodRateEl.textContent = metrics.foodPerMinute === null
+      ? "Nije dostupno"
+      : String(metrics.foodPerMinute);
+    if (practicePlanScoreRateEl) practicePlanScoreRateEl.textContent = metrics.scorePerFood === null
+      ? "Nije dostupno"
+      : String(metrics.scorePerFood);
+    if (practicePlanTargetRatioEl) practicePlanTargetRatioEl.textContent = String(metrics.targetRatio);
+    if (practicePlanMetrics) practicePlanMetrics.hidden = false;
+  }
+
+  function practiceGoalLabel(goal: PracticeGoal): string {
+    return goal === "survive_longer" ? "Preživi duže" : "Sakupi više hrane";
+  }
+
+  function renderPracticePlanResult(result: PracticePlanResult): void {
+    clearPracticePlanOutput();
+    if (!result.success) {
+      if (practicePlanStatusEl) practicePlanStatusEl.textContent = SAFE_PRACTICE_PLAN_ERROR;
+      return;
+    }
+
+    if (result.evaluation === null) {
+      if (practicePlanStatusEl) practicePlanStatusEl.textContent = "Cilj trenutno nije dostupan.";
+      if (practicePlanTargetEl) practicePlanTargetEl.textContent = "Ciljni prag nije dostupan.";
+      if (practicePlanSummaryEl) practicePlanSummaryEl.textContent = result.plan.summary;
+      if (practicePlanRecommendationEl) practicePlanRecommendationEl.textContent = result.plan.recommendation;
+      return;
+    }
+
+    const evaluation = result.evaluation;
+    const targetUnit = evaluation.goal === "survive_longer" ? "s" : "kom.";
+    if (practicePlanTargetEl) {
+      practicePlanTargetEl.textContent = `Cilj: ${practiceGoalLabel(result.plan.goal)}. Ciljni prag: ${result.plan.targetValue} ${targetUnit}.`;
+    }
+    if (result.plan.completed) {
+      if (practicePlanStatusEl) practicePlanStatusEl.textContent = "Practice Plan je spreman.";
+      if (practicePlanSummaryEl) practicePlanSummaryEl.textContent = result.plan.summary;
+      if (practicePlanRecommendationEl) practicePlanRecommendationEl.textContent = result.plan.recommendation;
+    } else if (practicePlanStatusEl) {
+      practicePlanStatusEl.textContent = result.incompleteMessage ?? SAFE_PRACTICE_PLAN_ERROR;
+    }
+    renderPracticePlanMetrics(evaluation);
+  }
+
+  async function requestPracticePlan(): Promise<void> {
+    if (state.status !== "game-over" ||
+        !practicePlanButton ||
+        !practicePlanPanel ||
+        !practiceGoalSelect ||
+        practicePlanButton.disabled) {
+      return;
+    }
+
+    const goal = practiceGoalSelect.value;
+    if (!isPracticeGoal(goal)) return;
+    const requestGeneration = ++practicePlanRequestGeneration;
+    practicePlanButton.disabled = true;
+    practicePlanPanel.hidden = false;
+    clearPracticePlanOutput();
+    if (practicePlanStatusEl) practicePlanStatusEl.textContent = "AI analiza u toku...";
+
+    try {
+      const sessionId = await getOrCreateGameSessionId();
+      if (requestGeneration !== practicePlanRequestGeneration || state.status !== "game-over") return;
+      const response = await fetch(`${BACKEND_URL}/api/ai/practice-plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, goal }),
+      });
+      const rawResult: unknown = await response.json();
+      if (requestGeneration !== practicePlanRequestGeneration || state.status !== "game-over") return;
+      const result = parsePracticePlanResult(rawResult);
+      if (!response.ok || !result) {
+        renderPracticePlanResult({ success: false });
+        return;
+      }
+      renderPracticePlanResult(result);
+    } catch {
+      if (requestGeneration === practicePlanRequestGeneration) {
+        renderPracticePlanResult({ success: false });
+      }
+    } finally {
+      if (requestGeneration === practicePlanRequestGeneration) {
+        practicePlanButton.disabled = false;
+      }
     }
   }
 
@@ -425,7 +729,14 @@ function boot(): void {
     if (event.code === "KeyP" || event.code === "Escape") {
       event.preventDefault();
       if (state.status === "running" || state.status === "paused") {
+        const wasPaused = state.status === "paused";
         applyState(togglePause(state));
+        if (wasPaused && state.status === "running" && pausedAt !== null) {
+          pausedMs += Date.now() - pausedAt;
+          pausedAt = null;
+        } else if (!wasPaused && state.status === "paused") {
+          pausedAt = Date.now();
+        }
         render();
       }
       return;
@@ -450,6 +761,9 @@ function boot(): void {
   restartButton?.addEventListener("click", restart);
   adviceButton?.addEventListener("click", () => {
     void requestAiAdvice();
+  });
+  practicePlanButton?.addEventListener("click", () => {
+    void requestPracticePlan();
   });
   updateDifficultyControls();
   restart();

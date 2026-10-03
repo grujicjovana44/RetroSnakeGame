@@ -84,7 +84,7 @@ Stable evidence IDs:
 | `session.score` | W04 validated session score |
 | `session.durationSeconds` | W04 validated session duration |
 | `session.foodCollected` | W04 validated food count |
-| `evaluation.foodPerMinute` | Derived only when duration is positive; otherwise `null` |
+| `evaluation.foodPerMinute` | Derived when duration is positive and the finite result is representable; otherwise `null` |
 | `evaluation.scorePerFood` | Derived only when food count is positive; otherwise `null` |
 
 `collisions` is deliberately absent. W04's frontend records only a terminal
@@ -104,14 +104,24 @@ evidence. No other session fields may be copied into the output.
   The tool is the sole source of the rating; do not ask the model to classify
   or echo a rating in its Step-1 proposal.
 4. Recompute decimal metrics/rates and ratios, round each displayed derived
-  decimal value to exactly two places, and reject mismatches. Evidence stores
-  that normalized rounded scalar and is compared exactly. Rating never
-  depends on rounded `targetRatio`.
+  decimal value to exactly two places, and reject mismatches. If a positive
+  duration produces a rate outside finite JavaScript number range, normalize
+  that rate to `null`; evidence stores the normalized scalar and is compared
+  exactly. Rating never depends on rounded `targetRatio`.
 5. Validate evidence IDs are in the stable allowlist and each evidence value
    equals the corresponding normalized metric/candidate field.
 6. Serialize and enforce the 4,096-byte limit.
 7. Project only allowlisted fields into the model context; never forward raw
-   session objects, secret-bearing objects, error text or unrelated state.
+  session objects, secret-bearing objects, error text or unrelated state.
+
+Step 1 context contains the selected goal, bounded session facts, allowed
+candidate interval and tool-call schema, but no rating enum, thresholds or
+evaluation formula. `evaluate_practice_goal` is the sole authority that rates
+a candidate; later model steps receive the rating only from its validated
+normalized result. When a tool execution succeeds, the API returns this same
+validated normalized object as `evaluation` alongside the plan. Clients render
+evaluator metrics only from that field. A preflight `goal_unavailable`
+response has `evaluation: null` because no tool execution occurred.
 
 No secrets are expected in this pure tool; schema projection also prevents
 unexpected properties from being forwarded. If any validation fails, no

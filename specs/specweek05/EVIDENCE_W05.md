@@ -1,8 +1,8 @@
 # W05 Evidence: AI Practice Plan
 
-**Status:** Evidence skeleton — intentionally unfilled until implementation,
-tests and any live run have actually occurred. No pass or runtime result is
-claimed here.
+**Status:** Approval, W04 baseline, W05 fake-first verification, and the first
+successful live development smoke are recorded below. Pair review and final
+completion review remain pending.
 
 ## Index
 
@@ -13,6 +13,68 @@ claimed here.
 - [Tool contract](TOOL_CONTRACTS.md)
 - [Agent evaluations](AGENT_EVALS.md)
 - [AI usage ledger](AI_USAGE_LOG.md)
+- [Live smoke runbook](LIVE_SMOKE_RUNBOOK.md)
+- [Seven-minute demo script](DEMO_SCRIPT.md)
+
+## Approval and W04 baseline
+
+- Human approval of `SPEC.md` and its narrow constitution amendment: 2026-10-03.
+- Exact amendment applied to `specs/CONSTITUTION.md`.
+- `npm run typecheck`: passed (exit 0).
+- `npm test`: passed, 4 files and 82 tests (exit 0).
+- `npm run build`: passed (exit 0).
+- `npm run test:e2e`: passed, 6 tests (exit 0); existing AI Advice browser flow passed.
+- No product code had been edited when these baseline commands ran.
+
+## Phase 2 verification
+
+- `npm exec -- vitest run tests/agent.test.ts`: passed, 1 file and 61 tests.
+- `npm run typecheck`: passed after T006-T009 changes.
+- `npm test`: passed, 5 files and 143 tests, including W04 regressions.
+- `npm run build`: passed after T006-T009 changes.
+- `npm run test:e2e`: passed, 11 tests including existing W03/W04 browser tests; AI Advice still passes.
+- No live Gemini requests were made during Phase 2; provider transport tests used injected fake `fetch`.
+
+## Phase 3 verification
+
+- Fixed two-goal controls are hidden outside game over; Playwright verifies both options and visibility.
+- Both goal values are posted as exactly `{ sessionId, goal }`; both use the same created session ID.
+- Success target is rendered from `plan`; metrics are rendered from `evaluation`.
+- Realistic/non-realistic incomplete results display rating-specific fixed copy and evaluator metrics, never model summary/recommendation prose.
+- `goal_unavailable` displays fixed plan text and no metrics; HTTP failure displays the generic safe message.
+- Loading disables the button; a forced second click produces no duplicate request.
+- The existing W04 Advice scenario passed in the same 11-test E2E suite.
+
+## Phase 4 preparation and corrections
+
+- Duration correction: `src/main.ts` records game-over time at the terminal
+  transition, accumulates paused intervals, and sends
+  `round((gameEndedAt - gameStartedAt - pausedMs) / 1000)`. This is important
+  because duration is the `survive_longer` baseline; paused time and waiting
+  before requesting Advice/Practice Plan are not active play.
+- E31: `npm run test:e2e -- --grep "excludes pause and game-over wait"` passed
+  (1 test). The fake clock advanced 5,000 ms paused and another 5,000 ms after
+  game-over; the session request still contained 2 active seconds.
+- E32: `npm run test:e2e -- --grep "fixed Practice Plan goal controls"` passed
+  (1 test); both visible option labels are Serbian Latin.
+- Gemini adapter: `npm exec -- vitest run tests/agent.test.ts` passed (1 file,
+  61 tests). Step 1 instructions/request contain no rating names or thresholds;
+  Step 2/3 are step-specific. The final schema has no `anyOf`, keeps only
+  `kind` required, and applies SDK-supported `maxLength` values. `finding` is
+  model-authored Serbian Latin prose, at most 300 characters; the evaluator
+  contract remains unchanged and the prose is not truth-validated.
+- Backend entrypoint: `PORT=4317 npm run dev:backend` from this workspace
+  printed `RetroSnake backend listening on http://127.0.0.1:4317`. A local
+  `curl -i -sS -X POST http://127.0.0.1:4317/api/game/session` with valid
+  session facts returned `HTTP/1.1 201 Created`; no provider route was called.
+- Request-body bound: `readJson` consumes `maxBodyBytes`; no server change was
+  needed. Entry-point path handling worked from the workspace path containing
+  spaces, so no launcher-specific rewrite was needed.
+- Security scans: built `dist/` had no API-key pattern or `GEMINI` matches;
+  `git check-ignore -v server/.env` returned `.gitignore:6:.env`; `src/main.ts`
+  had no `innerHTML`; browser `src/` had no server-module or `@google/genai`
+  imports.
+- No live Gemini calls were made during Phase 4 preparation.
 
 ## Architecture
 
@@ -40,8 +102,8 @@ the flow; document deviations here before claiming acceptance.
 
 | Run class | Provider | Model | Date | Result | Source/evidence |
 |---|---|---|---|---|---|
-| Fake tests | Scripted fake | Not applicable | Pending | Pending | Pending test output |
-| Live development | Gemini configured server-side | Record exact model only after call | Pending | Pending; no live success claimed | Pending sanitized run record |
+| Fake tests | Scripted fake | Not applicable | 2026-10-03 | E01 normal 2-step path passed; 61 focused agent tests passed | `npm exec -- vitest run tests/agent.test.ts --reporter=verbose` |
+| Live development | Gemini | `gemini-3.1-flash-lite` | 2026-10-03 | E07 revision path completed in 3 steps; 3 provider attempts, 0 retries, 2 tool calls; 25,678 ms; `goal_completed` | E07; `AI_USAGE_LOG.md`; sanitized run ID `aa364b5b-8054-4f29-9fee-eb100f2d8f79` |
 | Final demo | Gemini configured server-side | Record exact model only after call | Pending | Pending | Pending sanitized run record |
 
 Keep live development runs at or below 15 and final demo runs at or below 3.
@@ -56,8 +118,11 @@ provider error bodies.
   [`TOOL_CONTRACTS.md`](TOOL_CONTRACTS.md).
 - Collision metric: deliberately excluded; W04 stores only terminal `0/1`
   collision indication, not an event count.
-- Record implementation file, test names, and actual contract review result:
-  **Pending**.
+- Implementation: `server/agentTools.ts`; the concrete phase-two test bindings
+  are recorded in `AGENT_EVALS.md`.
+- Contract review result: input/session scope, goal range, integer rating,
+  normalized evidence, collision exclusion, immutability and output byte bound
+  are covered by passing focused tests.
 
 ## Success run traces
 
@@ -66,93 +131,68 @@ prompt, raw model response or private session data.
 
 ```text
 Eval ID: E01
-Run ID: [sanitized ID]
-Goal: [survive_longer | collect_more_food; no numeric private stats]
-Run class: [fake | live]
-Status: [pending]
-Steps: [steps[] trace pending]
-Step count: [ ] (expected 2)
-Provider/model per step: [ ]
-Decision/validation per step: [ ]
-Step-1 prompt/context contains candidate range but no rating enum, thresholds or formula: [ ]
-Tool: evaluate_practice_goal, calls [ ] (expected 1), result validation [ ]
-Final goal/targetValue matched latest evaluated candidate: [ ]
-UI target displayed from validated final fields: [ ]
-UI metrics displayed from normalized API evaluation: [ ]
-Provider attempts: [ ] (maximum 6)
-Tool calls: [ ] (maximum 2)
-Stop reason: [ ]
-Elapsed: [ ] ms (maximum deadline 30,000 ms)
-Evidence field IDs/values verified against tool output: [ ]
-Test names/output proving trace: [ ]
+Run class: FAKE automated test; the normal 2-step E01 flow has not been run on a live provider.
+Test: `completes a normal run with step-one context free of rating criteria`
+Result: HTTP 200, completed, 2 steps, 2 provider attempts, 0 retries, 1 tool call, `goal_completed`.
+Candidate values and session facts are test fixtures, not live evidence.
 ```
 
 ```text
 Eval ID: E07 (one-time revision)
-Run ID: [sanitized ID]
-Run class: [fake | live]
-Step 1: prompt omits rating criteria; proposed candidate tool-rated too_ambitious [ ]
-Step 2: model receives tool rating; distinct revised candidate rates realistic [ ]
-Step 3: final references latest candidate/evidence exactly [ ]
-Agent steps/provider attempts/tool calls: [ ] / [ ] / [ ]
-Stop reason: [goal_completed]
-Test names/output: [pending]
+Run ID: aa364b5b-8054-4f29-9fee-eb100f2d8f79
+Run class: LIVE development smoke
+Provider/model: gemini / gemini-3.1-flash-lite
+Step 1: tool_request; 8,407 ms; tool_result_valid
+Step 2: tool_request revision; 8,352 ms; tool_result_valid
+Step 3: final; 8,908 ms; final_valid
+Provider attempts/retries/tool calls: 3 / 0 / 2; elapsed 25,678 ms
+HTTP 200; status completed; stop reason `goal_completed`; providerHttpStatus null.
+The record has no candidate values or evaluator ratings. Because the orchestrator permits a Step-2 tool request only when the previous rating is not `realistic`, the accepted second tool call implies that the first candidate was rated non-realistic. This is an inference from the gate rule, not a rating recorded in the log.
+This live trace demonstrates Candidate → Evaluate → Revise on the live provider. E01's normal 2-step flow remains untested live.
 ```
 
 ```text
 Eval ID: E08c/E27 incomplete UI checks
-Latest tool rating: [realistic | too_easy | too_ambitious]
-Fixed UI status text: [matches rating-specific constant]
-Metrics source: normalized validated `evaluation` in API response
-Rendered fields: [score, duration, food, derived rates, target ratio, rating]
-Model recommendation prose suppressed: [ ]
-For realistic rating, no “not recommended” wording: [ ]
-For non-realistic rating, fixed not-recommended wording: [ ]
-For E08a goal_unavailable, evaluation is null and no tool metrics render: [ ]
-Test names/output: [pending]
+Run class: FAKE automated backend tests and mocked UI tests.
+E08c backend test: `maps Step-1 refusal to failure and Step-2/3 refusal to rating-specific partials`.
+Step-2 refusal: HTTP 200, `model_refusal`, 2 provider attempts, 0 retries, 1 tool call; both realistic and non-realistic branches return fixed copy.
+Step-3 refusal: HTTP 200, `model_refusal`, 3 provider attempts, 0 retries, 2 tool calls; final partial binds to the latest validated result.
+E08c UI test: `renders realistic and non-realistic incomplete results without model prose` passed in Playwright; two mocked endpoint responses; provider/tool counters and backend stop reason are not applicable to this UI mock.
+E27 backend test: `accepts a non-realistic incomplete final with HTTP 200 and normalized evaluation`; HTTP 200, `plan_incomplete`, 2 provider attempts, 0 retries, 1 tool call.
+E27 UI assertion is included in `renders realistic and non-realistic incomplete results without model prose`; mocked endpoint, backend counters not applicable. The test confirms fixed status copy, validated metrics rendering and suppression of model prose.
 ```
 
 ## Rejected-tool evidence
 
 ```text
 Eval ID: E02
-Run ID: [sanitized ID]
-Run class: fake
+Run class: fake (automated test; not a live provider run)
+Test: `rejects unknown-tool before tool execution`
 Proposal class: unknown tool
-Validation outcome: [rejected before dispatch]
-toolCallCount: [must be 0 for this proposal]
-Provider attempts: [ ]
-Stop reason: [unknown_tool]
-Test name/output: [pending]
+Result: HTTP 502; `unknown_tool`; providerAttemptCount 1; toolCallCount 0; rejected before executor.
 ```
 
 ```text
 Eval ID: E03
+Run class: fake (automated test; not a live provider run)
+Test: `rejects invalid-arguments before tool execution`
 Proposal class: invalid/out-of-range tool args
-Validation outcome: rejected before dispatch
-toolCallCount: [must be 0]
-Stop reason: invalid_tool_args
-Test name/output: [pending]
+Result: HTTP 502; `invalid_tool_args`; providerAttemptCount 1; toolCallCount 0; rejected before executor.
 ```
 
 ```text
 Eval ID: E06
-Step 1 evaluated candidate rating: too_ambitious
-Step 2 proposal: same canonical tool + arguments
-Validation order outcome: repeated_call before justification/tool-limit checks
-Tool executions: [must remain 1; duplicate is not executed]
-Stop reason: repeated_call
-Test name/output: [pending]
+Run class: fake (automated test; not a live provider run)
+Test: `rejects repeated calls before the Step-2 justification gate`
+Result: HTTP 502; `repeated_call`; 2 provider attempts; toolCallCount 1 (one execution; duplicate not executed); 0 retries.
+The test fixture uses a repeated proposal; no live candidate value or rating is claimed.
 ```
 
 ```text
 Eval ID: E05
-Step 1 evaluated candidate rating: too_ambitious
-Step 2 revised candidate evaluated: [ ]
-Step 3 decision: tool_request rejected before execution
-toolCallCount: [must remain <=2]
-Stop reason: max_steps
-Test name/output: [pending]
+Run class: fake (automated test; not a live provider run)
+Test: `stops a third tool proposal at max_steps before the executor`
+Result: HTTP 502; `max_steps`; providerAttemptCount 3; toolCallCount 2; third proposal not executed; 0 retries.
 ```
 
 The test must instrument the actual tool executor, not infer rejection only
@@ -160,25 +200,24 @@ from the HTTP status.
 
 ## Failure run and stop reason
 
+No live failure was observed in the first smoke. The following failure traces
+are fake/test evidence only.
+
 ```text
-Run ID: [sanitized ID]
-Run class: [fake | live]
-Failure category: [ ]
-Step/attempt/tool counts: [ ]
-Stop reason: [ ]
-Was active provider aborted when required: [ ]
-Public response generic and free of internal details: [ ]
-Test name/output: [pending]
+Run class: fake (automated test)
+Eval IDs: E04a, E04b, E11a, E11b, E11c, E14; no live failure observed.
+See the per-scenario results below; tests use scripted fake models or mocked transport.
 ```
 
 ```text
 Eval ID: E04a/E04b/E11a-E11c
-Failure class: [tool error | provider unavailable | transient | auth/quota | provider 429]
-Provider attempts/retries/tool calls: [ ] / [ ] / [ ]
-Actual outbound HTTP request count (adapter fake transport where applicable): [ ]
-HTTP status/body class: [ ] (provider 429 => 503; app rate limit => 429)
-Stop reason: [ ]
-Test name/output: [pending]
+Run class: fake (automated tests; not live provider failures)
+E04a test `does not replay a throwing tool and returns no internal error details`: HTTP 502; `tool_error`; providerAttemptCount 1; toolCallCount 1; no retry or model replay.
+E04b test `retries transient provider failures once per step and preserves safe status mapping`: recovery branch HTTP 200 / `goal_completed`, providerAttemptCount 3, retryCount 1, toolCallCount 1; exhausted branch HTTP 502 / `provider_unavailable`, providerAttemptCount 2, retryCount 1, toolCallCount 0.
+E11a same transient recovery test: HTTP 200 / `goal_completed`; providerAttemptCount 3, retryCount 1, toolCallCount 1; fake delay 200 ms.
+E11b tests `marks provider error classes with the SPEC retry policy` and `maps provider 429 Retry-After and does not retry auth or non-retryable errors`: auth case makes 1 fake provider attempt, no retry, no tool, public HTTP 502 / `provider_auth_or_quota`; adapter fake transport maps HTTP 403 to that class. No provider response body is used.
+E11c test `honors provider Retry-After values and maps 429 to 503`: too-long Retry-After stops at providerAttemptCount 1, retryCount 0, toolCallCount 0, HTTP 503 / `rate_limit`; retry-eligible fake 429 recovery returns HTTP 200. `enforces the 10-request client limiter and returns a safe 429 response` confirms the separate app limiter returns HTTP 429 before an 11th model attempt (0 attempts, 0 tools for that limited request).
+E14 test `aborts an active provider at total deadline and on client cancellation`, deadline branch: HTTP 502; `deadline`; providerAttemptCount 1; toolCallCount 0; active fake request aborted; no retry.
 ```
 
 ```text
@@ -195,12 +234,13 @@ Test name/output: [pending]
 
 | Gate | Command | Result/date | Evidence reference |
 |---|---|---|---|
-| Focused agent tests | `npm exec -- vitest run tests/agent.test.ts` | Pending | Pending |
-| Full unit tests incl. W04 regression | `npm test` (`vitest run tests`, per `package.json`) | Pending | Pending |
-| Typecheck | `npm run typecheck` | Pending | Pending |
-| Build | `npm run build` | Pending | Pending |
-| Playwright | `npm run test:e2e` (`playwright test`, per `package.json`) | Pending | Pending |
-| Security checklist | Review in `PLAN.md` | Pending | Pending |
+| Focused agent tests | `npm exec -- vitest run tests/agent.test.ts --reporter=verbose` | Passed 2026-10-03: 1 file, 61 tests | T003-T009 backend coverage; exact names in `AGENT_EVALS.md` |
+| Full unit tests incl. W04 regression | `npm test` (`vitest run tests`, per `package.json`) | Passed 2026-10-03: 5 files, 143 tests | Current W05 and W04 |
+| Typecheck | `npm run typecheck` | Passed 2026-10-03 after A1-A5 | W05 corrections and T013 |
+| Build | `npm run build` | Passed 2026-10-03 after A1-A5 | W05 corrections and T013 |
+| Playwright | `npm run test:e2e` (`playwright test`, per `package.json`) | Passed 2026-10-03: 12 tests | W03/W04 regression and W05 UI, duration, and Serbian labels |
+| Focused Playwright corrections | `npm run test:e2e -- --grep "excludes pause and game-over wait"`; `npm run test:e2e -- --grep "fixed Practice Plan goal controls"` | Passed 2026-10-03: 1 test each | E31/E32 |
+| Security checklist | Review in `PLAN.md` | Mapping complete; all four gates passed 2026-10-03 | T013 security matrix |
 
 ## Known limitations
 
@@ -211,8 +251,16 @@ Test name/output: [pending]
 - Application validates evidence references and scalar values but cannot
   prove free-form prose truth.
 - Live availability/latency is provider-dependent; fake tests do not prove it.
+- The live development smoke completed in 25,678 ms of the 30,000 ms deadline
+  (about 8.5 seconds per step on `gemini-3.1-flash-lite`). One retry or a slower
+  step may use the remaining budget and end in a `deadline` stop with the
+  generic safe error. A possible later proposal is a larger deadline or faster
+  model, only with approval and corresponding updates to `SPEC.md`,
+  `AGENT_FLOW.md`, and tests; no such change is made here.
 - Synchronous tool work cannot be preempted mid-execution; an output returned
   after the 250 ms watchdog is discarded and the run stops as `tool_timeout`.
+- A valid positive W04 duration can be too small for a finite `foodPerMinute`;
+  the approved SPEC clarification normalizes only that unrepresentable rate to `null`.
 - `tool_limit` is tested by injecting an exhausted count at the dispatcher;
   public Step 3 rejects a tool proposal as `max_steps` first.
 - SDK-internal retry behavior depends on the Gemini adapter/SDK configuration;
@@ -242,11 +290,11 @@ do not mark understanding complete before both can explain it.
 
 ## Completion review
 
-- [ ] Success flow evidence present.
+- [x] Success flow evidence present (one live development run; E01/E07).
 - [ ] Rejected-tool evidence proves zero execution for rejected proposal.
 - [ ] Failure trace and stop reason present.
-- [ ] Fake and live results clearly separated.
-- [ ] All required validation commands actually passed.
+- [x] Fake and live results clearly separated.
+- [x] All required validation commands actually passed.
 - [ ] Pair rotation and five-question review completed.
 - [ ] Known limitations retained; no unsupported claims.
 - [ ] Human review/approval recorded.

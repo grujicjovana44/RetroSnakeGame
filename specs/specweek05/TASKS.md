@@ -1,12 +1,17 @@
 # W05 Tasks: AI Practice Plan
 
-**Status:** Proposed; no implementation task may start until `SPEC.md` and the
-narrow constitution amendment are approved. A task is complete only with its
-acceptance evidence.
+**Status:** APPROVED — human approval recorded 2026-10-03. `SPEC.md` and the narrow constitution
+amendment are approved; T001 records that decision. A task is complete only
+with its acceptance evidence.
+
+**Progress:** T001–T013 complete; T014 partially complete (first live smoke
+passed; development budget remains); T015 pair review and T016 final review
+remain open. `PLAN.md` contains the required security-control mapping and the
+full validation evidence for T013.
 
 | ID | Task | Depends on | Planned files | Acceptance evidence |
 |---|---|---|---|---|
-| W05-T001 | Approve scenario, goal ranges, limits, anonymous-session boundary and proposed constitution amendment | Human review | `SPEC.md` only | Decision and approval recorded; the root constitution remains unchanged until a separate explicit approval |
+| W05-T001 | Record approval of scenario, goal ranges, limits, anonymous-session boundary and constitution amendment | Human approval | `SPEC.md`, `specs/CONSTITUTION.md` | Approval dated 2026-10-03 recorded; exact approved amendment applied |
 | W05-T002 | Capture fresh W04 baseline and confirm clean regression surface | T001 | Existing W04 docs/tests; no product edits | Typecheck, unit, build and E2E baseline outcomes recorded; `/api/ai/advice` behavior unchanged |
 | W05-T003 | Add agent request/decision/tool/result/final Zod schemas and stable evidence IDs | T001 | `server/agentContracts.ts`, `tests/agent.test.ts` | Enum, shapes, bounds, unknown fields and evidence value types tested |
 | W05-T004 | Implement `evaluate_practice_goal` contract and deterministic evaluator | T003 | `server/agentTools.ts`, `tests/agent.test.ts`, `TOOL_CONTRACTS.md` | Goal ranges, ratios, ratings, null denominators, read-only behavior, session scope, collision exclusion and output bounds tested |
@@ -62,6 +67,8 @@ The implementation should use focused tests, preferably in
 | W05-A30 | Mandatory assignment extension | Gemini adapter outbound request count | First test SDK transport injection; use injected fake transport if supported, otherwise mock global `fetch`; count HTTP requests and prove no hidden SDK retry |
 | W05-A31 | Mandatory assignment extension | Six-attempt budget | Each of 3 steps gets one immediate transient failure then one successful retry; run completes at exactly 6 outbound attempts and cannot issue a seventh; no timeout delays |
 | W05-A32 | Supplementary | Unjustified Step-2 tool request | Prior evaluation is `realistic`; reject `tool_not_justified` before dispatch, keep tool executor count at 1, HTTP 502 |
+| W05-A33 | Supplementary | Session duration excludes pause and post-game wait | E31 Playwright scenario confirms only active duration is submitted |
+| W05-A34 | Supplementary | Serbian fixed-goal labels | E32 Playwright scenario confirms both fixed goal labels |
 
 ## E-ID to task-test map (reverse direction)
 
@@ -99,6 +106,8 @@ The implementation should use focused tests, preferably in
 | W05-A30 | E10b |
 | W05-A31 | E29 |
 | W05-A32 | E30 |
+| W05-A33 | E31 |
+| W05-A34 | E32 |
 
 ## Pair rotation and review
 

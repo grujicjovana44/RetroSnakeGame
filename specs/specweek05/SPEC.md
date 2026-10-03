@@ -2,9 +2,8 @@
 
 ## Status and source of truth
 
-Status: **PROPOSED — awaiting human approval**. This document does not authorize
-implementation. The W05 feature and the narrow constitution amendment below
-require approval before any product-code changes.
+Status: **APPROVED — human approval recorded 2026-10-03.** The W05 feature and
+the narrow constitution amendment below are approved for implementation.
 
 Precedence: `docs/GAME_SPEC.md` is authoritative for game behavior;
 `docs/AI_FEATURE_SPEC.md` and `docs/AI_PROVIDER_CONTRACT.md` remain authoritative
@@ -69,6 +68,12 @@ accepted.
 | `survive_longer` | Whole seconds | `lowerBound = B`; `upperBound = min(86,400, B + max(3, ceil(2 * max(B, 1))))`. A target equal to baseline is permitted only as a `too_easy` candidate; a completed plan must target above baseline. | Next completed game's `durationSeconds >= targetValue`. |
 | `collect_more_food` | Whole food items | `lowerBound = F`; `upperBound = min(10,000, F + max(3, ceil(2 * max(F, 1))))`. A target equal to baseline is permitted only as a `too_easy` candidate; a completed plan must target above baseline. | Next completed game's `foodCollected >= targetValue`. |
 
+Session duration is captured when the game first transitions to `game-over` and
+is `round((gameEndedAt - gameStartedAt - pausedMs) / 1000)`. Time spent paused
+and time spent on the game-over screen are excluded. This makes the
+`survive_longer` baseline represent active play rather than the delay before
+the player requests Advice or a Practice Plan.
+
 `B = round(durationSeconds)` and `F = foodCollected`. W04 frontend applies
 `Math.round` before submitting duration, but the confirmed `server/api.ts`
 schema accepts finite `durationSeconds` in `[0, 86,400]` without `.int()`; it
@@ -86,7 +91,8 @@ provider or tool call.
 The evaluator computes `foodPerMinute = foodCollected / (durationSeconds / 60)`
 when duration is positive, `scorePerFood = score / foodCollected` when food is
 positive, and `targetRatio = targetValue / max(goalBaseline, 1)`. A missing
-denominator produces `null`, not zero. All displayed derived decimal metrics
+denominator or a derived value that cannot be represented as a finite JavaScript
+number produces `null`, not zero. All displayed derived decimal metrics
 and ratios are rounded to exactly two decimal places before they enter
 normalized tool output or evidence. Ratings are computed from integer values
 before display rounding:
@@ -169,6 +175,17 @@ requests, not only logical adapter calls.
   names and malformed args are rejected during gate 2; nothing executes before
   gate 7.
 - A provider retry/fallback is an attempt for the same step, not a new step.
+
+The Gemini adapter encodes these steps as follows: Step 1 declares only
+`evaluate_practice_goal` and uses function-calling mode `ANY` restricted to that
+name; ordinary text output is rejected. Step 2 declares the tool only when the
+latest rating is non-realistic, and may combine that declaration with the
+structured JSON decision schema so the model can request its one revision or
+return a final/refusal. After a realistic rating Step 2 has no tool. Step 3
+never declares tools and accepts only the structured JSON final/refusal
+schema. JSON parsing accepts an optional outer Markdown JSON fence, but the
+backend schemas and semantic checks remain authoritative. The adapter sets a
+low thinking level because `maxOutputTokens` also includes thinking tokens.
 
 ## Allowed context and tool boundary
 
@@ -297,7 +314,10 @@ unknown properties are rejected. The semantic validator accepts an evidence
 item only when the same source, field and deeply equal scalar value appeared
 in the latest normalized tool result from this run. Evidence values are compared
 with exact scalar equality, not floating tolerance; rounded ratios are the
-values that are validated. Arbitrary references are rejected. The final
+values that are validated. `source`, `field`, and `value` are copied from or
+matched against the evaluator; `finding` is a short model-written Serbian
+(Latin-script) explanation, not copied from the evaluator, and is not
+machine-verified. Arbitrary references are rejected. The final
 `goal` and `targetValue` must exactly match that same latest tool result. At
 least one valid evidence item is required for `completed: true`.
 
@@ -305,8 +325,12 @@ Completion is additionally tied to the last rating: only a `realistic`
 candidate may be returned with `completed: true` or as a recommended target.
 If the last rating is `too_easy` or `too_ambitious`, a final must have
 `completed: false` and confidence other than `high`; the UI suppresses its
-free-form recommendation and displays a fixed “candidate not recommended”
-message. A mismatched final is rejected as `invalid_final_output`.
+free-form recommendation and displays one of two fixed messages according to
+the evaluator rating: for `too_easy` or `too_ambitious`,
+`Cilj nije preporučen: alat ga je ocenio kao prelak ili preambiciozan.`; for
+`realistic`, `Cilj je ocenjen kao realističan, ali plan nije dovršen. Možeš
+koristiti prikazani cilj za sledeću partiju.` A mismatched final is rejected as
+`invalid_final_output`.
 
 | Outcome | Definition | User-visible behavior |
 |---|---|---|
@@ -332,10 +356,10 @@ Human approval points: **none**. Core is read-only and permits zero write
 actions. If a future feature proposes writes, it needs a separate scope/spec
 and explicit human approval before execution.
 
-## Proposed narrow constitution amendment
+## Approved narrow constitution amendment
 
-Do not edit `specs/CONSTITUTION.md` as part of this proposal. Subject to human
-approval, add one narrowly scoped amendment:
+Approved by the human owner on 2026-10-03 and applied to
+`specs/CONSTITUTION.md`:
 
 > The W05 AI Practice Plan may run only through its approved backend endpoint
 > and orchestrator, with the fixed two-goal enum, the single read-only
@@ -375,16 +399,25 @@ the model may decline without producing an unsafe action.
    therefore excluded from W05 model context, evaluator metrics, evidence and
    claims. Do not change W04 storage or add events in this feature.
 2. Only score, duration, food count and this non-informative terminal flag are
-   currently recorded; they cannot support movement-level causal claims.
-  `durationSeconds` is rounded by the current frontend before submission, but
-  its W04 Zod schema accepts any finite number in range; W05 uses
-  `Math.round(durationSeconds)` for the integer target baseline.
+  currently recorded; they cannot support movement-level causal claims.
+  `durationSeconds` is now captured at game-over with paused time removed and
+  is rounded before submission. The W04 Zod schema still accepts any finite
+  number in range; W05 uses `Math.round(durationSeconds)` for the integer
+  target baseline. This correction is required because duration is the
+  `survive_longer` baseline and must not include pauses or post-game waiting.
 3. Anonymous UUID session scope proves existence and exact request binding, not
    authenticated ownership.
-4. Evidence references are machine-verifiable; natural-language explanations
-   are not semantically provable by this application.
+4. Evidence references (`source`, `field`, and scalar `value`) are
+  machine-verifiable; model-written Serbian `finding` prose is not
+  semantically provable by this application. The evaluator contract is
+  unchanged.
 5. Live provider availability is external and must be recorded separately from
-   fake-provider tests. No live success is claimed by this proposal.
+  fake-provider tests. The first live development run on
+  `gemini-3.1-flash-lite` completed in 25,678 ms of the 30,000 ms deadline,
+  about 8.5 seconds per step. One retry or a slower step may consume the
+  remaining time and produce a `deadline` stop with the generic safe error.
+  A larger deadline or faster model is a possible later proposal only; it
+  requires approval and updates to this SPEC, `AGENT_FLOW.md`, and tests.
 6. A synchronous local tool cannot be interrupted mid-execution; if it returns
   after the 250 ms watchdog, discard the result and stop as `tool_timeout`.
 7. `tool_limit` is tested only by injecting the exhausted counter at the

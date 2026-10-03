@@ -1,7 +1,7 @@
 # W05 Agent Evaluations
 
-**Status:** Planned cases; none are marked passed until implementation and
-actual test evidence exist. Most cases use a scripted fake model/tool.
+**Status:** Backend, UI, and the first live smoke are documented; pair review
+and final review remain pending.
 
 | ID | Scenario | Scripted path | Expected outcome and evidence |
 |---|---|---|---|
@@ -41,6 +41,8 @@ actual test evidence exist. Most cases use a scripted fake model/tool.
 | E28 | Unknown evidence field | Final invents a field ID not present in stable evidence allowlist | `invalid_final_output`; exact evidence validation rejects it with HTTP 502 |
 | E29 | Six-attempt budget | In each of 3 model steps, first request gets an immediate transient failure and the one retry succeeds | Run completes HTTP 200 at exactly 6 actual outbound attempts; assert a seventh is impossible; no timeouts, so within the 30 s deadline |
 | E30 | Unjustified Step-2 tool request | Step 1 proposal is evaluated `realistic`; Step 2 requests another tool anyway | `tool_not_justified`; executor count remains 1; HTTP 502 |
+| E31 | Session duration excludes pause and post-game wait | Fake clock advances 5 seconds paused and 5 seconds after game-over | Submitted duration remains the 2 active seconds, proving `gameEndedAt` and `pausedMs` are used |
+| E32 | Serbian fixed-goal labels | Game-over goal controls render both fixed enum options | UI labels are exactly `Preživi duže` and `Sakupi više hrane` |
 
 ## Required assignment §32 coverage
 
@@ -95,6 +97,49 @@ actual test evidence exist. Most cases use a scripted fake model/tool.
 | E28 | W05-A29 |
 | E29 | W05-A31 |
 | E30 | W05-A32 |
+| E31 | W05-A33 |
+| E32 | W05-A34 |
+
+## Phase 2 test binding
+
+| Eval ID | Concrete automated test in `tests/agent.test.ts` | Scope note |
+|---|---|---|
+| E01 | `completes a normal run with step-one context free of rating criteria`; `sends both fixed goals with the shared session and renders fields/evaluation metrics` | Backend run/context and success UI |
+| E02 | `rejects %s before tool execution` | Vitest `unknown-tool` case; executor remains at zero |
+| E03 | `rejects %s before tool execution` | Vitest `invalid-arguments` case; executor remains at zero |
+| E04a | `does not replay a throwing tool and returns no internal error details` | Tool failure terminal |
+| E04b | `retries transient provider failures once per step and preserves safe status mapping` | Includes exhaustion |
+| E05 | `stops a third tool proposal at max_steps before the executor` | Step 3 gate |
+| E06 | `rejects repeated calls before the Step-2 justification gate` | One execution |
+| E07 | `allows one candidate revision and binds the final to the latest evaluation` | Two tools, three steps |
+| E08a | `returns the fixed unavailable plan without model, tool or evaluation`; `renders unavailable goals without metrics and errors with fixed safe text` | Preflight and no-metrics UI |
+| E08b | `maps Step-1 refusal to failure and Step-2/3 refusal to rating-specific partials` | Backend refusal |
+| E08c | `maps Step-1 refusal to failure and Step-2/3 refusal to rating-specific partials`; `renders realistic and non-realistic incomplete results without model prose` | Backend and rating-specific UI |
+| E09 | `rejects a forged or mismatched tool result before another model step`; `recomputes and rejects mismatched, oversized-shape or unknown-field tool output` | Tool result not forwarded |
+| E10a | `propagates provider timeout aborts and stops after one retry` | Two attempts maximum |
+| E10b | `injects transport, normalizes a tool proposal, and counts the outbound request`; `uses conditional Step-2 tool access and requires JSON final/refusal output`; `sends no tool in Step 2 after a realistic result and in Step 3`; `strips JSON Markdown fences and treats MAX_TOKENS empty output as malformed`; `disables SDK retries and maps provider 503 after exactly one HTTP request` | Fake HTTP transport and serialized per-step config |
+| E11a | `retries transient provider failures once per step and preserves safe status mapping` | Fixed 200 ms |
+| E11b | `marks provider error classes with the SPEC retry policy`; `maps provider 429 Retry-After and does not retry auth or non-retryable errors` | No auth/quota retry |
+| E11c | `honors provider Retry-After values and maps 429 to 503`; `enforces the 10-request client limiter and returns a safe 429 response` | Provider 503 vs app 429 |
+| E12 | `rejects malformed decisions and a step-one final without calling the tool` | No tool execution |
+| E13 | `guards the independent tool limit before invoking the executor` | Dispatcher injection |
+| E14 | `aborts an active provider at total deadline and on client cancellation` | Deadline branch |
+| E15, E26 | `rejects finals with a wrong goal, mismatched target, forged evidence or invalid rating semantics` | Same-run final validation |
+| E16 | `does not replay a throwing tool and returns no internal error details`; `does not expose raw provider errors, stacks or secrets`; `returns a generic HTTP 502 and logs no provider secret on E16 failure` | Unit and HTTP body/log privacy |
+| E17 | `returns the same safe 400 body for invalid UUID and missing session without calls` | Same response |
+| E18 | `returns the same preflight 400 body for corrupted session metrics and a missing session` | Zero provider/tool calls |
+| E19 | `keeps baseline plus one realistic for both goals at every baseline from 0 to 50` | 102 cases |
+| E20 | `completes a normal run with step-one context free of rating criteria`; `does not mutate session facts, expose collisions, or exceed the output cap` | Context excludes collisions; evaluator is read-only and output-bounded |
+| E21 | `propagates an HTTP client disconnect to the active model request` | HTTP abort propagation |
+| E22 | `rejects malformed decisions and a step-one final without calling the tool` | Step-1 final rejected |
+| E23, E24 | `rejects model-supplied sessionId, unknown argument keys and mismatched goals before dispatch` | Zero tool executions |
+| E25 | `accepts inclusive range endpoints and rejects just-outside candidates` | Both goal range logic is shared |
+| E27 | `accepts a non-realistic incomplete final with HTTP 200 and normalized evaluation`; `renders realistic and non-realistic incomplete results without model prose` | Positive backend partial and fixed-message/metric UI proof |
+| E28 | `rejects finals with a wrong goal, mismatched target, forged evidence or invalid rating semantics` | Unknown evidence ID |
+| E29 | `enforces the six-attempt run budget without timeout delays` | Seventh script item remains unused |
+| E30 | `rejects an unjustified distinct Step-2 request after a realistic rating` | Executor remains at one |
+| E31 | `excludes pause and game-over wait from submitted session duration` | 5 seconds of pause and 5 seconds on game-over screen do not alter the submitted duration |
+| E32 | `shows fixed Practice Plan goal controls only after Game Over` | Both values and displayed Serbian labels are asserted |
 
 ## Fake-first gate
 

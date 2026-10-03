@@ -73,6 +73,41 @@ outcomes, latency, model, timestamp, and available prompt/output/total token
 metadata to `server/ai-usage.local.json`. This local report is Git-ignored,
 contains no session IDs or provider content, and keeps at most 500 records.
 
+### 🎯 AI Practice Plan
+
+After Game Over, the player selects one of two fixed goals: survive longer or
+collect more food. A backend agent proposes a numeric target for the next game;
+the local, read-only `evaluate_practice_goal` tool evaluates it, and the agent
+may make one revision before returning a short validated plan with evidence.
+
+The flow is UI → `POST /api/ai/practice-plan` → bounded orchestrator →
+provider-neutral model interface and Gemini adapter → allowlisted evaluator.
+The Gemini key stays on the server; the browser receives only validated plan
+data or a generic safe error. Each run is limited to 3 agent steps, 2 tool
+calls, 6 provider attempts, a 30-second deadline, and at most one retry per
+step.
+
+The backend validates tool proposals, evaluator results, and final plan
+evidence. Only the fixed evaluator is callable, and logs omit prompts, secrets,
+session identifiers, game statistics, and raw provider content. The game does
+not provide collision history, session ownership is anonymous, and a run can
+take up to 30 seconds.
+
+To enable the provider, set `GEMINI_API_KEY` and `GEMINI_MODEL_CHAIN` in the
+ignored `server/.env` file, then start `npm run dev:backend` and `npm run dev`
+in separate terminals. Verify changes with `npm run typecheck`, `npm test`,
+`npm run build`, and `npm run test:e2e`.
+
+W05 documents: [SPEC](specs/specweek05/SPEC.md) ·
+[PLAN](specs/specweek05/PLAN.md) · [TASKS](specs/specweek05/TASKS.md) ·
+[AGENT_FLOW](specs/specweek05/AGENT_FLOW.md) ·
+[TOOL_CONTRACTS](specs/specweek05/TOOL_CONTRACTS.md) ·
+[AGENT_EVALS](specs/specweek05/AGENT_EVALS.md) ·
+[EVIDENCE_W05](specs/specweek05/EVIDENCE_W05.md) ·
+[AI_USAGE_LOG](specs/specweek05/AI_USAGE_LOG.md) ·
+[LIVE_SMOKE_RUNBOOK](specs/specweek05/LIVE_SMOKE_RUNBOOK.md) ·
+[DEMO_SCRIPT](specs/specweek05/DEMO_SCRIPT.md).
+
 ### 🧪 Testing and Validation
 
 The project includes game-state validation through `validateGameState`, together with comprehensive **unit and integration tests** implemented using Vitest.

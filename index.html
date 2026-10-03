@@ -76,6 +76,55 @@
       #ai-advice-panel p {
         margin: 6px 0;
       }
+      #practice-plan-controls {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+      }
+      #practice-plan-controls[hidden],
+      #practice-plan-panel[hidden],
+      #practice-plan-metrics[hidden] {
+        display: none;
+      }
+      #practice-goal {
+        background: #111417;
+        border: 2px solid #4e9d67;
+        color: #e6e6e6;
+        font: 16px 'Courier New', monospace;
+        padding: 8px;
+      }
+      #practice-plan-button {
+        border-color: #8fd694;
+      }
+      #practice-plan-panel {
+        border: 1px solid #3a3f47;
+        max-width: 560px;
+        padding: 12px 16px;
+        width: calc(100% - 32px);
+      }
+      #practice-plan-panel h2 {
+        color: #8fd694;
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+      #practice-plan-panel p {
+        margin: 6px 0;
+      }
+      #practice-plan-metrics {
+        display: grid;
+        gap: 4px 16px;
+        grid-template-columns: max-content minmax(0, 1fr);
+        margin: 12px 0 0;
+      }
+      #practice-plan-metrics dt {
+        color: #b8c2cc;
+      }
+      #practice-plan-metrics dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
     </style>
   </head>
   <body>
@@ -93,6 +142,30 @@
     <canvas id="game" width="400" height="400"></canvas>
     <button id="restart" type="button" hidden>Restartuj partiju</button>
     <button id="ai-advice" type="button" hidden>AI Advice</button>
+    <div id="practice-plan-controls" hidden>
+      <label for="practice-goal">Cilj vežbanja</label>
+      <select id="practice-goal">
+        <option value="survive_longer">Preživi duže</option>
+        <option value="collect_more_food">Sakupi više hrane</option>
+      </select>
+      <button id="practice-plan-button" type="button">Practice Plan</button>
+    </div>
+    <section id="practice-plan-panel" aria-live="polite" hidden>
+      <h2>Practice Plan</h2>
+      <p id="practice-plan-status" role="status"></p>
+      <p id="practice-plan-target"></p>
+      <p id="practice-plan-summary"></p>
+      <p id="practice-plan-recommendation"></p>
+      <dl id="practice-plan-metrics" hidden>
+        <dt>Rating</dt><dd id="practice-plan-rating"></dd>
+        <dt>Score</dt><dd id="practice-plan-score"></dd>
+        <dt>Duration</dt><dd id="practice-plan-duration"></dd>
+        <dt>Food collected</dt><dd id="practice-plan-food"></dd>
+        <dt>Food per minute</dt><dd id="practice-plan-food-rate"></dd>
+        <dt>Score per food</dt><dd id="practice-plan-score-rate"></dd>
+        <dt>Target ratio</dt><dd id="practice-plan-target-ratio"></dd>
+      </dl>
+    </section>
     <section id="ai-advice-panel" aria-live="polite" hidden>
       <h2>AI Advice</h2>
       <p id="ai-advice-summary"></p>

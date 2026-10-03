@@ -35,3 +35,14 @@ On 2026-09-27 the human owner approved the W04 assignment scope and the local
 usage report. This amendment supersedes the earlier Session 003 statement
 that backend and tool calling were out of scope; it does not change W03 gameplay
 rules or authorize additional dependencies.
+
+### Approved W05 amendment (2026-10-03)
+
+The W05 AI Practice Plan may run only through its approved backend endpoint
+and orchestrator, with the fixed two-goal enum, the single read-only
+deterministic `evaluate_practice_goal` tool, server-bound session scope,
+validated model proposals/results/final output, and the limits in
+`specs/specweek05/SPEC.md`. It may not alter W03 game behavior, W04 AI Advice,
+game state, score, difficulty, rules, files or network state. All other
+autonomous tool access remains out of scope. This exception expires if the
+approved feature scope changes and requires a further human amendment.

@@ -2,8 +2,7 @@
 
 ## Status
 
-**PROPOSED — awaiting approval of `SPEC.md` and its narrow constitution
-amendment. No implementation is authorized yet.** This plan covers only the
+**APPROVED — human approval recorded 2026-10-03.** This plan covers only the
 new W05 feature. Existing W04 Advice remains stable.
 
 ## Decision record
@@ -18,10 +17,9 @@ new W05 feature. Existing W04 Advice remains stable.
   collected session metrics; the local evaluator has real work (candidate
   range, derived rates, target ratio and fixed rating); one revision is enough
   to correct a poor candidate without an open-ended plan loop.
-- **Approval boundary:** confirm this specification and the proposed
-  constitution amendment before code changes. Feature documentation in
-  `docs/` is not part of this scope; W05 artifacts live under
-  `specs/specweek05/`.
+- **Approval boundary:** `SPEC.md` and its narrow constitution amendment were
+  approved on 2026-10-03. Feature documentation in `docs/` is not part of this
+  scope; W05 artifacts live under `specs/specweek05/`.
 
 ## Current implementation facts
 
@@ -31,7 +29,11 @@ new W05 feature. Existing W04 Advice remains stable.
   implementation. The W05 orchestrator must not depend on Gemini SDK types.
 - `server/api.ts` contains Zod schemas for W04 session/advice contracts.
 - `server/server.ts` is the Node HTTP router and owns CORS/rate limiting and
-  provider configuration.
+  provider configuration. The existing `npm run dev:backend` entrypoint was
+  verified from the workspace path containing `AI Bootcamp`; it printed
+  `RetroSnake backend listening` and served `POST /api/game/session` with HTTP
+  201. The `maxBodyBytes` parameter is consumed by `readJson` to enforce the
+  request body limit.
 - `src/main.ts` sends session metrics only when the current AI Advice flow
   starts; `index.html` contains the existing game-over controls/panel.
 - W04 stores score, duration, collisions and food count. The frontend sets
@@ -43,11 +45,15 @@ new W05 feature. Existing W04 Advice remains stable.
   Therefore API-created sessions can contain decimal seconds; W05 rounds the
   validated value for integer target baseline/rating and keeps raw duration
   separately for derived rates.
+- The game-over UI now records `gameEndedAt` at the terminal transition and
+  subtracts accumulated `pausedMs` before rounding `durationSeconds`. This
+  prevents post-game waiting and pauses from inflating the `survive_longer`
+  baseline; the W04 session and Advice contracts are unchanged.
 - W04 exposes no authenticated account/session owner. The W05 tool can verify
   session existence and exact equality with the server-bound original request
   ID only; it must not claim identity-based ownership.
-- No `specs/specweek05/` artifacts currently exist. No dependency, build tool,
-  package script, W03 rule, or W04 API contract needs to change.
+- The W05 artifacts are present under `specs/specweek05/`. No dependency, build
+  tool, package script, W03 rule, or W04 API contract needs to change.
 
 ## Architecture and proposed file map
 
@@ -74,6 +80,26 @@ translation stays in the adapter; the orchestrator sees only normalized
 Disable SDK-internal automatic retries or count each outbound request against
 the same W05 global attempt budget.
 
+The adapter forces the Step-1 `evaluate_practice_goal` function call with
+`ANY`/`allowedFunctionNames`, exposes the tool in Step 2 only after a
+non-realistic evaluation, and sends no tools in Step 3. Steps 2/3 use the
+structured JSON decision schema; Step 2 combines it with the conditional
+revision tool declaration. The SDK transport test checks the serialized
+request, including the low thinking setting required to leave generation
+budget for the response. Official Gemini model documentation lists all five
+allowlisted model codes as supporting function calling, structured outputs
+and thinking. The first live smoke on `gemini-3.1-flash-lite` passed on
+2026-10-03; the other allowlisted models have not been tested live.
+
+System instructions are selected per step. Step 1 omits rating names and
+criteria; Steps 2/3 require the final target to match the latest evaluation,
+constrain completion by its rating, and request Serbian (Latin-script) prose.
+The response schema is sent through `responseJsonSchema`, which the installed
+SDK types as `unknown` and documents as JSON Schema format, rather than its
+`Schema` type. JSON Schema constraints such as `maxLength` and `maxItems` use
+numeric JSON values. Zod remains the authoritative strict runtime validator,
+including exact scalar evidence matching and unknown-key rejection.
+
 ### Request and run boundary
 
 The UI first creates/reuses the existing game session and then posts
@@ -93,9 +119,10 @@ accepted.
 
 ## Implementation sequence
 
-1. **Approval and baseline.** Approve `SPEC.md` and the narrow amendment text;
-   confirm target ranges and anonymous-session limitation. Run the current
-   required checks before code work and preserve the W04 baseline.
+1. **Approval and baseline.** Record the 2026-10-03 approval of `SPEC.md` and
+  the narrow amendment; confirm target ranges and anonymous-session
+  limitation. Run the current required checks before code work and preserve
+  the W04 baseline.
 2. **Contracts first.** Implement exact Zod schemas/types and stable evidence
    IDs. Test goal enum, range boundaries, tool decision variants, final string
    bounds, unknown keys, and evidence scalar types.
@@ -158,21 +185,20 @@ secondary attempt and the global budget. No cross-provider fallback.
 
 ## Security checklist: implementation guarantee and evidence
 
-| Assignment §41 control | Planned enforcement | Planned proof |
+| Assignment §41 control | Enforcing module | Observed test and evidence |
 |---|---|---|
-| Provider key server-side only | `server/geminiAgentModel.ts`; reuse backend environment only; no Vite exposure | Source/config review and built-asset secret scan; no secret is included in test fixtures |
-| Model cannot select arbitrary tools | `server/agentTools.ts` fixed registry; `server/agent.ts` exact name dispatch | Unknown-tool test asserts tool counter stays zero |
-| Arguments validated | `server/agentContracts.ts` + scope/range validation in `server/agent.ts` before dispatch | Unknown goal, malformed shape, out-of-range and wrong goal tests; zero tool calls |
-| Tool output validated | `server/agentTools.ts` output parser, allowed enums/fields, size cap and normalized projection | Malformed/oversize/secret-like/unexpected-field result tests; no second model step |
-| No arbitrary filesystem/network access | Adapter only accesses Gemini provider; pure evaluator imports no IO; no generic URL/file/shell executor | Source review; tool tests use no transport; no such tool in registry |
-| Core does not change canonical game state | Evaluator reads `SessionStore`, returns derived object, never mutates session/game | Snapshot immutability test and repeated state equality assertion |
-| Secrets absent from tool result | Strict output schema rejects unknown fields; normalized projection emits fixed allowlisted scalar fields only | Injected extra field is rejected and never forwarded; serialized normalized result is checked |
-| Maximum steps | `server/agent.ts` `MAX_AGENT_STEPS=3` and step-kind gate | Separate `max_steps` test: step 3 tool proposal never executes |
-| Total deadline | Orchestrator deadline and abort propagation | Fake-clock/deferred provider deadline test, bounded duration and aborted signal |
-| Bounded retries | One secondary attempt per step, SDK retries disabled/accounted, and global `MAX_PROVIDER_ATTEMPTS=6` | Gemini fake-transport test counts actual outbound HTTP requests; six-attempt budget test uses immediate fake errors |
-| Logs contain no key/private contents | Sanitized completion log fields only; omit prompt, output, session, goal target values and arguments | Log serialization privacy test with secret/private sentinel values |
-| Final output validated | Zod schema plus same-run evidence lookup in `server/agent.ts` | Schema-invalid and forged evidence tests; response never reports completed success |
-| Safe user-facing error | HTTP mapper returns stable generic message; internal taxonomy remains server-side | Assert failure HTTP body excludes raw provider error, stack and sentinel secret |
+| Provider key server-side only | `server/server.ts`, `server/geminiAgentModel.ts` | Built asset scan found no API-key pattern or `GEMINI`; `git check-ignore -v server/.env` matched `.gitignore:6:.env`; browser-source import scan was empty |
+| Model cannot select arbitrary tools | `server/agent.ts`, `server/agentTools.ts` | `rejects unknown-tool before tool execution` asserts zero executor calls; focused suite passed 61 tests |
+| Arguments and tool output validated | `server/agentContracts.ts`, `server/agent.ts`, `server/agentTools.ts` | `rejects model-supplied sessionId, unknown argument keys and mismatched goals before dispatch`; `recomputes and rejects mismatched, oversized-shape or unknown-field tool output`; focused suite passed |
+| No arbitrary filesystem/network access | `server/agentTools.ts`, fixed registry in `server/agentTools.ts` | Source review confirms the evaluator is local/read-only and no generic URL, filesystem, shell, or network tool is registered; browser imports of server modules and `@google/genai` were absent |
+| Core does not change canonical game state | `server/agentTools.ts` | `does not mutate session facts, expose collisions, or exceed the output cap` passed; snapshot equality is asserted |
+| Secrets absent from tool result | `server/agentTools.ts`, `server/agentContracts.ts` | Strict normalized output rejects unknown fields; forged/mismatched output test rejects before the next model step |
+| Maximum steps | `server/agent.ts` (`MAX_AGENT_STEPS=3`) | `stops a third tool proposal at max_steps before the executor` passed and confirms only two tool executions |
+| Total deadline | `server/agent.ts` | `aborts an active provider at total deadline and on client cancellation` passed; active provider abort is asserted |
+| Bounded retries | `server/agent.ts`, `server/geminiAgentModel.ts` | `disables SDK retries and maps provider 503 after exactly one HTTP request` and `enforces the six-attempt run budget without timeout delays` passed |
+| Logs contain no key/private contents | `server/server.ts`, `server/agent.ts` | HTTP log privacy tests reject session/stat/secret sentinels; log shape contains only sanitized run/step evidence |
+| Final output validated | `server/agentContracts.ts`, `server/agent.ts` | `rejects finals with a wrong goal, mismatched target, forged evidence or invalid rating semantics` passed |
+| Safe user-facing error | `server/agent.ts`, `server/server.ts` | Provider/tool sentinel tests confirm generic public response with no raw error, stack, or secret |
 
 ## Acceptance/evidence map
 
