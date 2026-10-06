@@ -105,7 +105,7 @@ the documented flow; observed limitations are recorded below.
 |---|---|---|---|---|---|
 | Fake tests | Scripted fake | Not applicable | 2026-10-03 | E01 normal 2-step path passed; 61 focused agent tests passed | `npm exec -- vitest run tests/agent.test.ts --reporter=verbose` |
 | Live development | Gemini | `gemini-3.1-flash-lite` | 2026-10-03, 2026-10-06 | E07 revision completed in 3 steps (3 attempts, 0 retries, 2 tools; 25,678 ms); E01 normal path completed in 2 steps (2 attempts, 0 retries, 1 tool; 13,858 ms) | E07 and E01 blocks; `AI_USAGE_LOG.md`; sanitized run IDs recorded below |
-| Final demo | Gemini configured server-side | Record exact model only after call | Pending | Pending | Pending sanitized run record |
+| Final demo | Gemini | `gemini-3.1-flash-lite` | 2026-10-06 | Final Demo Live #1 completed in 2 steps; 2 provider attempts, 0 retries, 1 tool call; 7,331 ms; `goal_completed` | Commit `0a82d0c`; sanitized run ID `ccb05613-d0ca-4e34-ae56-ca0f521cf22e`; record below |
 
 Keep live development runs at or below 15 and final demo runs at or below 3.
 Do not record API keys, raw prompts/responses, session IDs, game statistics or
@@ -165,6 +165,19 @@ Provider attempts/retries/tool calls: 3 / 0 / 2; elapsed 25,678 ms
 HTTP 200; status completed; stop reason `goal_completed`; providerHttpStatus null.
 The record has no candidate values or evaluator ratings. Because the orchestrator permits a Step-2 tool request only when the previous rating is not `realistic`, the accepted second tool call implies that the first candidate was rated non-realistic. This is an inference from the gate rule, not a rating recorded in the log.
 This live trace demonstrates Candidate → Evaluate → Revise on the live provider. The separate 2026-10-06 E01 record documents the normal 2-step live path.
+```
+
+```text
+Eval ID: E01 (Final Demo Live #1)
+Date: 2026-10-06; commit: 0a82d0c
+Run ID: ccb05613-d0ca-4e34-ae56-ca0f521cf22e
+Provider/model: gemini / gemini-3.1-flash-lite
+Status: completed; 2 agent steps; 2 provider attempts; 0 retries;
+1 tool call; elapsed 7,331 ms; stop reason goal_completed
+Step 1: tool_request; accepted; evaluate_practice_goal; tool_result_valid
+Step 2: final; final_valid
+This is a live normal-success E01 path. The sanitized record does not include
+the evaluator rating, so no rating is asserted here.
 ```
 
 ```text

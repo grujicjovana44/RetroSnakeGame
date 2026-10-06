@@ -22,7 +22,7 @@ raw outputs, session IDs, private game statistics or chain-of-thought.
 | Development | Fake (E29 representative trace) | 1 | 6 | 3 | 2 | One measured fake run from the passing six-attempt budget test; not a suite-wide aggregate. |
 | Development | Live | 8 | 24 | 1 | 15 | One existing E07 run plus Runs A–G dated 2026-10-06; 8 of 15 development live runs used. |
 | Final demo | Fake | 0 | 0 | 0 | 0 | Separate from demo live usage. |
-| Final demo | Live |  |  |  |  | Limit 3 live runs. |
+| Final demo | Live | 1 | 2 | 0 | 1 | Final Demo Live #1 on 2026-10-06, commit `0a82d0c`; 1 of 3 final-demo live runs used. |
 
 ## Individual live-run records
 
@@ -42,6 +42,14 @@ Add one row only after an actual live run. Do not add fake runs here.
 The step count is marked "nije navedeno" where the supplied sanitized run
 record did not include it. Provider-attempt totals include retries. Fake E29
 usage remains separate and is excluded from the live budget.
+
+## Individual final-demo live-run records
+
+Final-demo usage is tracked separately from development usage.
+
+| # | Date | Commit | Run ID | Provider/model | Status | Agent steps | Provider attempts | Retries (included in attempts) | Tool calls | Elapsed ms | Stop reason |
+|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---|
+| 1 | 2026-10-06 | `0a82d0c` | `ccb05613-d0ca-4e34-ae56-ca0f521cf22e` | gemini / `gemini-3.1-flash-lite` | completed | 2 | 2 | 0 | 1 | 7,331 | `goal_completed` |
 
 ## Fake-run summary
 
