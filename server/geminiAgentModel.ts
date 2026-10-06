@@ -26,7 +26,7 @@ function systemInstructionFor(request: AgentModelStepRequest): string {
 
   if (request.stepNumber === 1) {
     return [...common,
-      "Step 1: call evaluate_practice_goal with one candidate inside candidateRange and higher than the sessionFacts value for the selected goal, using only goal and targetValue. Do not return a final decision.",
+      "Step 1: call evaluate_practice_goal with one candidate inside candidateRange and higher than the sessionFacts value for the selected goal, using only goal and targetValue. Prefer a modest, incremental improvement rather than a target near the upper end of candidateRange. Do not return a final decision.",
       "Do not classify or self-rate the candidate; only the evaluator supplies a rating.",
     ].join(" ");
   }

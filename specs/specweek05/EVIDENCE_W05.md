@@ -33,7 +33,7 @@ complete as of 2026-10-03.
 - `npm run typecheck`: passed after T006-T009 changes.
 - `npm test`: passed, 5 files and 143 tests, including W04 regressions.
 - `npm run build`: passed after T006-T009 changes.
-- `npm run test:e2e`: passed, 11 tests including existing W03/W04 browser tests; AI Advice still passes.
+- `npm run test:e2e`: passed, 12 tests including existing W03/W04 browser tests; AI Advice still passes.
 - No live Gemini requests were made during Phase 2; provider transport tests used injected fake `fetch`.
 
 ## Phase 3 verification
@@ -44,7 +44,7 @@ complete as of 2026-10-03.
 - Realistic/non-realistic incomplete results display rating-specific fixed copy and evaluator metrics, never model summary/recommendation prose.
 - `goal_unavailable` displays fixed plan text and no metrics; HTTP failure displays the generic safe message.
 - Loading disables the button; a forced second click produces no duplicate request.
-- The existing W04 Advice scenario passed in the same 11-test E2E suite.
+- The existing W04 Advice scenario passed in the same 12-test E2E suite.
 
 ## Phase 4 preparation and corrections
 
@@ -104,7 +104,7 @@ the documented flow; observed limitations are recorded below.
 | Run class | Provider | Model | Date | Result | Source/evidence |
 |---|---|---|---|---|---|
 | Fake tests | Scripted fake | Not applicable | 2026-10-03 | E01 normal 2-step path passed; 61 focused agent tests passed | `npm exec -- vitest run tests/agent.test.ts --reporter=verbose` |
-| Live development | Gemini | `gemini-3.1-flash-lite` | 2026-10-03 | E07 revision path completed in 3 steps; 3 provider attempts, 0 retries, 2 tool calls; 25,678 ms; `goal_completed` | E07; `AI_USAGE_LOG.md`; sanitized run ID `aa364b5b-8054-4f29-9fee-eb100f2d8f79` |
+| Live development | Gemini | `gemini-3.1-flash-lite` | 2026-10-03, 2026-10-06 | E07 revision completed in 3 steps (3 attempts, 0 retries, 2 tools; 25,678 ms); E01 normal path completed in 2 steps (2 attempts, 0 retries, 1 tool; 13,858 ms) | E07 and E01 blocks; `AI_USAGE_LOG.md`; sanitized run IDs recorded below |
 | Final demo | Gemini configured server-side | Record exact model only after call | Pending | Pending | Pending sanitized run record |
 
 Keep live development runs at or below 15 and final demo runs at or below 3.
@@ -132,10 +132,25 @@ prompt, raw model response or private session data.
 
 ```text
 Eval ID: E01
-Run class: FAKE automated test; the normal 2-step E01 flow has not been run on a live provider.
+Run class: FAKE automated test.
 Test: `completes a normal run with step-one context free of rating criteria`
 Result: HTTP 200, completed, 2 steps, 2 provider attempts, 0 retries, 1 tool call, `goal_completed`.
 Candidate values and session facts are test fixtures, not live evidence.
+```
+
+```text
+Eval ID: E01
+Run ID: 7e9cda4f-633b-4915-816c-fe74a56517d2
+Run class: LIVE development
+Date: 2026-10-06
+Provider/model: gemini / gemini-3.1-flash-lite
+Step 1: accepted evaluate_practice_goal; tool_result_valid
+Step 2: final; final_valid
+Status: completed; 2 agent steps; 2 provider attempts; 0 retries; 1 tool call
+Elapsed: 13,858 ms; stop reason: goal_completed
+The sanitized backend record does not include the evaluator rating. `realistic`
+is inferred from the accepted completed final and the existing final-validation
+rule; it is not presented as a directly recorded rating.
 ```
 
 ```text
@@ -149,7 +164,7 @@ Step 3: final; 8,908 ms; final_valid
 Provider attempts/retries/tool calls: 3 / 0 / 2; elapsed 25,678 ms
 HTTP 200; status completed; stop reason `goal_completed`; providerHttpStatus null.
 The record has no candidate values or evaluator ratings. Because the orchestrator permits a Step-2 tool request only when the previous rating is not `realistic`, the accepted second tool call implies that the first candidate was rated non-realistic. This is an inference from the gate rule, not a rating recorded in the log.
-This live trace demonstrates Candidate → Evaluate → Revise on the live provider. E01's normal 2-step flow remains untested live.
+This live trace demonstrates Candidate → Evaluate → Revise on the live provider. The separate 2026-10-06 E01 record documents the normal 2-step live path.
 ```
 
 ```text
@@ -218,17 +233,18 @@ E04b test `retries transient provider failures once per step and preserves safe 
 E11a same transient recovery test: HTTP 200 / `goal_completed`; providerAttemptCount 3, retryCount 1, toolCallCount 1; fake delay 200 ms.
 E11b tests `marks provider error classes with the SPEC retry policy` and `maps provider 429 Retry-After and does not retry auth or non-retryable errors`: auth case makes 1 fake provider attempt, no retry, no tool, public HTTP 502 / `provider_auth_or_quota`; adapter fake transport maps HTTP 403 to that class. No provider response body is used.
 E11c test `honors provider Retry-After values and maps 429 to 503`: too-long Retry-After stops at providerAttemptCount 1, retryCount 0, toolCallCount 0, HTTP 503 / `rate_limit`; retry-eligible fake 429 recovery returns HTTP 200. `enforces the 10-request client limiter and returns a safe 429 response` confirms the separate app limiter returns HTTP 429 before an 11th model attempt (0 attempts, 0 tools for that limited request).
-E14 test `aborts an active provider at total deadline and on client cancellation`, deadline branch: HTTP 502; `deadline`; providerAttemptCount 1; toolCallCount 0; active fake request aborted; no retry.
+E14 test `aborts an active provider at total deadline and on client cancellation`, deadline branch: HTTP 502; `deadline`; providerAttemptCount 1; toolCallCount 0; active fake request aborted; no retry or further model/tool execution. These outcomes are explicitly asserted after the E14 test update.
 ```
 
 ```text
 Eval ID: E14
 Run class: fake automated test
 Test: `aborts an active provider at total deadline and on client cancellation`
-Deadline branch: HTTP 502; stop reason `deadline`; providerAttemptCount 1;
-toolCallCount 0; active fake provider request aborted; no retry or later tool
-call. The test uses the configured 30,000 ms run deadline; an exact measured
-elapsed duration is not recorded in the available test evidence.
+Production total deadline: 30,000 ms. The fake test injects the shortened
+`deadlineMs: 15` for fast deterministic execution. It asserts HTTP 502 with the
+generic safe failure response, stop reason `deadline`, providerAttemptCount 1,
+toolCallCount 0, one model call, active fake provider request aborted, and no
+tool execution. This is deterministic fake evidence, not a live timeout test.
 ```
 
 ## Test results
@@ -293,11 +309,11 @@ not rerun during this documentation update.
 | `npm run test:e2e -- --grep "fixed Practice Plan goal controls"` | Passed: 1 test (E32). |
 | Start backend in one terminal: `npm run dev:backend` | Application started for manual verification. |
 | Start frontend in another terminal: `npm run dev -- --host 127.0.0.1` | Application started for manual verification. |
-| One completed game, select one goal, click Practice Plan once | One live development run; E07 records Gemini `gemini-3.1-flash-lite`, 3 agent steps, 3 provider attempts, 0 retries, 2 tool calls, 25,678 ms, HTTP 200, `goal_completed`. No additional live run is claimed. |
+| Live development runs | Eight total are recorded in `AI_USAGE_LOG.md` (one E07 plus Runs A–G); live E01 is Gemini `gemini-3.1-flash-lite`, 2 steps, 2 attempts, 0 retries, 1 tool, 13,858 ms, `goal_completed`. |
 
-The live-run counts above refer to the same run recorded in `AI_USAGE_LOG.md`,
-not an additional provider call. No credentials or private session/game data
-are included here.
+The live-run total matches the individual records in `AI_USAGE_LOG.md`; retries
+are included in provider-attempt totals. No credentials or private
+session/game data are included here.
 
 The role rotation and contributions above are recorded from the team's report.
 Both members have submitted their answers below. The reviewer must verify
@@ -412,7 +428,7 @@ recorded above; no corrections were reported.
 
 ## Completion review
 
-- [x] Success flow evidence present (one live development run; E01/E07).
+- [x] Success flow evidence present (fake E01, live E01, and live E07 revision trace).
 - [x] Rejected-tool evidence proves zero execution for rejected proposal (E02/E03).
 - [x] Failure trace and stop reason present (E04/E11/E14 fake-test traces).
 - [x] Fake and live results clearly separated.

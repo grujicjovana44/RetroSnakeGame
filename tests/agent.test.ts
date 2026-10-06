@@ -8,7 +8,7 @@ import {
   validatePracticeEvaluation,
 } from "../server/agentTools";
 import { GeminiAgentModel } from "../server/geminiAgentModel";
-import { runPracticePlan, type AgentRunOptions } from "../server/agent";
+import { runPracticePlan, SAFE_AGENT_ERROR_MESSAGE, type AgentRunOptions } from "../server/agent";
 import { createBackendServer, type BackendServerOptions } from "../server/server";
 import { createRateLimiter } from "../server/httpSecurity";
 import {
@@ -589,12 +589,13 @@ describe("Gemini agent model adapter", () => {
       toolName: "evaluate_practice_goal",
       arguments: { goal: "survive_longer", targetValue: 51 },
     });
-    expect(requestBody).not.toMatch(/too_easy|too_ambitious|realisticDeltaMax|targetRatio|ceil|delta|1\.10|1\.50/i);
+    expect(requestBody).not.toMatch(/too_easy|too_ambitious|realisticDeltaMax|targetRatio|ceil|delta|threshold|formula|1\.10|1\.50/i);
     const systemInstruction = JSON.parse(requestBody).systemInstruction.parts[0].text as string;
     expect(systemInstruction).toContain("Step 1:");
     expect(systemInstruction).toContain("Serbian Latin");
     expect(systemInstruction).toContain("higher than the sessionFacts value for the selected goal");
-    expect(systemInstruction).not.toMatch(/too_easy|too_ambitious|realistic|realisticDeltaMax|1\.10|1\.50/);
+    expect(systemInstruction).toContain("Prefer a modest, incremental improvement rather than a target near the upper end of candidateRange");
+    expect(systemInstruction).not.toMatch(/too_easy|too_ambitious|realistic|realisticDeltaMax|targetRatio|delta|threshold|formula|1\.10|1\.50/i);
     expect(requestBody).not.toContain(sessionId);
     const body = JSON.parse(requestBody) as {
       tools?: unknown[];
@@ -1241,12 +1242,19 @@ describe("bounded Practice Plan orchestrator", () => {
 
   it("aborts an active provider at total deadline and on client cancellation", async () => {
     const deadlineModel = new ScriptedFakeAgentModel(["timeout"]);
+    let toolExecutions = 0;
     const deadlineResult = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(deadlineModel, {
+      toolExecutor: () => { toolExecutions += 1; return {}; },
       timing: { deadlineMs: 15, providerAttemptTimeoutMs: 1_000 },
     }));
+    expect(deadlineResult.statusCode).toBe(502);
+    expect(deadlineResult.body).toEqual({ success: false, message: SAFE_AGENT_ERROR_MESSAGE });
     expect(deadlineResult.evidence.stopReason).toBe("deadline");
     expect(deadlineResult.evidence.providerAttemptCount).toBe(1);
+    expect(deadlineResult.evidence.toolCallCount).toBe(0);
+    expect(deadlineModel.callCount).toBe(1);
     expect(deadlineModel.abortCount).toBe(1);
+    expect(toolExecutions).toBe(0);
 
     const cancelModel = new ScriptedFakeAgentModel(["timeout"]);
     const controller = new AbortController();

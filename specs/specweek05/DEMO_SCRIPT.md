@@ -8,11 +8,11 @@ not prepared answers.
 |---|---|---|
 | 0:00–0:45 | User goal | Show Game Over, the two Serbian fixed goals, and one selected practice goal. Explain that the output is a next-game target grounded in the finished game's bounded facts. |
 | 0:45–1:30 | Request path | Trace UI → `POST /api/ai/practice-plan` → preflight → orchestrator → provider-neutral boundary. Use `server/server.ts` and `server/agent.ts`. |
-| 1:30–3:00 | Candidate and evaluator | Present the fake E01 trace: candidate, deterministic tool evaluation, and final target/evidence binding. Point to `server/agentTools.ts` and `tests/agent.test.ts`; keep fake evidence distinct from any live run. |
-| 3:00–4:00 | Bounded behavior | Show the 3-step, 2-tool, 6-attempt, deadline, and retry bounds; explain the Step-2 revision and Step-3 final/refusal boundary using `server/agent.ts` and `AGENT_FLOW.md`. |
+| 1:30–3:00 | Candidate and evaluator | Present live E01 as the normal-success provider example: Step 1 evaluation, Step 2 valid final, 2 steps, 1 tool, 2 attempts, no retry. Keep the fake E01 automated test visibly separate; use it for deterministic UI/evidence assertions. Point to `EVIDENCE_W05.md` and `tests/agent.test.ts`. |
+| 3:00–4:00 | Bounded behavior and deadline | Show the 3-step, 2-tool, 6-attempt limits and production 30-second total deadline. Demonstrate E14 from the deterministic fake test: the active provider attempt is aborted, no further attempt or tool execution occurs, and the user gets the generic safe failure. Say explicitly that E14 is not a live timeout test. Explain Step-2 revision and Step-3 final/refusal boundaries using `server/agent.ts` and `AGENT_FLOW.md`. |
 | 4:00–5:00 | Rejection proof | Show an unknown/invalid proposal or repeated proposal and the assertion that rejected proposals do not execute another tool call. Use `tests/agent.test.ts` and `AGENT_EVALS.md`. |
 | 5:00–6:00 | Failure and privacy | Show generic safe errors, sanitized run logging, and fake-first validation. Do not display credentials, prompts, raw provider errors, session IDs, or game statistics. Use `PLAN.md` security evidence. |
-| 6:00–7:00 | Evidence and limitations | State live/fake run counts separately, show the active-duration correction and anonymous-session limitation, then invite questions. Use `EVIDENCE_W05.md` and `AI_USAGE_LOG.md`. |
+| 6:00–7:00 | Evidence and limitations | State live/fake counts separately: 8 of 15 development live runs are recorded; final-demo live usage remains pending. Run E (25,863 ms, one retry) is an example of bounded retry succeeding within 30 seconds, not evidence of behavior after deadline expiry. Show the active-duration correction and anonymous-session limitation, then invite questions. Use `EVIDENCE_W05.md` and `AI_USAGE_LOG.md`. |
 
 ## Five pair-review questions
 

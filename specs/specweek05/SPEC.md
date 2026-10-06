@@ -113,12 +113,15 @@ the rounded `targetRatio`. For every baseline `0..50`, `targetValue =
 goalBaseline + 1` is in range and rates `realistic`. This is an explicit test
 in `AGENT_EVALS.md`.
 
-The model is not told these rating thresholds or the rating enum before making
-its Step-1 proposal. It receives only the selected goal, bounded session facts,
-the candidate's allowed numeric interval, and the tool-call schema. The
-deterministic tool alone calculates and returns the rating after the candidate
-is validated and executed. This prevents self-rating, threshold gaming and
-model-driven evaluation; the rating is reproducible from the validated inputs.
+Before making its Step-1 proposal, the model receives the selected goal, bounded
+session facts, the candidate's allowed numeric interval, and the tool-call
+schema; it is not told the rating enum, thresholds, or evaluator formula. Its
+Step-1 system instruction gives qualitative product guidance to prefer a modest,
+incremental improvement over a target near the upper end of the allowed range.
+The model still chooses the concrete numeric target. The deterministic tool
+alone calculates and returns the rating after the candidate is validated and
+executed. This prevents self-rating, threshold gaming and model-driven
+evaluation; the rating is reproducible from the validated inputs.
 These thresholds classify candidate difficulty; they do not guarantee future
 performance. The tool returns stable evidence field IDs for all inputs and
 derived values. The model may explain those values, but may not invent a
