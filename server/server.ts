@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runPracticePlan, SAFE_AGENT_ERROR_MESSAGE, type AgentRunTiming } from "./agent";
 import type { AgentModel } from "./agentModel";
+import { FallbackAgentModel } from "./agentModel";
 import { GeminiAgentModel } from "./geminiAgentModel";
 import { createSession, requestAdvice, type InFlightAdvice, type SessionStore } from "./service";
 import { GeminiAdviceProvider, parseGeminiModelChain } from "./provider";
@@ -33,6 +34,8 @@ const adviceCache = new Map<string, import("./api").AdviceResponse>();
 const inFlightAdvice = new Map<string, InFlightAdvice>();
 const MODEL_CHAIN = parseGeminiModelChain(process.env.GEMINI_MODEL_CHAIN);
 const MODEL_NAME = MODEL_CHAIN[0];
+export const PRACTICE_PLAN_PRIMARY_MODEL = "gemini-3.1-flash-lite";
+export const PRACTICE_PLAN_FALLBACK_MODEL = "gemini-3.5-flash";
 const allowedOrigins = parseAllowedOrigins(process.env.FRONTEND_ORIGINS);
 const allowAdviceRequest = createRateLimiter(10, 60_000);
 const allowPracticePlanRequest = createRateLimiter(10, 60_000);
@@ -57,7 +60,12 @@ const createProvider = process.env.GEMINI_API_KEY
   : undefined;
 const provider = createProvider?.(MODEL_NAME) ?? null;
 const practicePlanModel = process.env.GEMINI_API_KEY
-  ? new GeminiAgentModel({ apiKey: process.env.GEMINI_API_KEY, modelName: MODEL_NAME })
+  ? new FallbackAgentModel({
+      primary: new GeminiAgentModel({ apiKey: process.env.GEMINI_API_KEY, modelName: PRACTICE_PLAN_PRIMARY_MODEL }),
+      fallback: new GeminiAgentModel({ apiKey: process.env.GEMINI_API_KEY, modelName: PRACTICE_PLAN_FALLBACK_MODEL }),
+      primaryModelName: PRACTICE_PLAN_PRIMARY_MODEL,
+      fallbackModelName: PRACTICE_PLAN_FALLBACK_MODEL,
+    })
   : null;
 
 export type BackendServerOptions = {
@@ -135,6 +143,17 @@ async function handleRequest(
 
   if (request.method === "OPTIONS") {
     if (!applyCorsHeaders(request, response, activeOrigins)) {
+      if (request.url === "/api/ai/practice-plan") {
+        emitSecurityEvent(activeSecurityEvents, {
+          correlationId: crypto.randomUUID(),
+          event: "origin_rejected",
+          outcome: "rejected",
+          reason: "origin_not_allowed",
+          statusCode: 403,
+          providerAttemptCount: 0,
+          toolCallCount: 0,
+        });
+      }
       sendJson(response, 403, { success: false, message: "Origin nije dozvoljen." });
       return;
     }
@@ -146,6 +165,17 @@ async function handleRequest(
   }
 
   if (!applyCorsHeaders(request, response, activeOrigins)) {
+    if (request.url === "/api/ai/practice-plan") {
+      emitSecurityEvent(activeSecurityEvents, {
+        correlationId: crypto.randomUUID(),
+        event: "origin_rejected",
+        outcome: "rejected",
+        reason: "origin_not_allowed",
+        statusCode: 403,
+        providerAttemptCount: 0,
+        toolCallCount: 0,
+      });
+    }
     sendJson(response, 403, { success: false, message: "Origin nije dozvoljen." });
     return;
   }
@@ -226,7 +256,7 @@ async function handleRequest(
           result = await runPracticePlan(input, {
           model: activePracticeModel,
           provider: options.practicePlanProvider ?? "gemini",
-          modelName: options.practicePlanModelName ?? MODEL_NAME,
+          modelName: options.practicePlanModelName ?? activePracticeModel.modelName ?? PRACTICE_PLAN_PRIMARY_MODEL,
           sessions: activeSessions,
           signal: clientAbortController.signal,
           timing: options.practicePlanTiming,
@@ -389,8 +419,30 @@ async function handleRequest(
       return;
     }
     if (error instanceof InvalidJsonBodyError) {
+      if (request.url === "/api/ai/practice-plan") {
+        emitSecurityEvent(activeSecurityEvents, {
+          correlationId: crypto.randomUUID(),
+          event: "body_rejected",
+          outcome: "rejected",
+          reason: "invalid_json",
+          statusCode: 400,
+          providerAttemptCount: 0,
+          toolCallCount: 0,
+        });
+      }
       sendJson(response, 400, { success: false, message: "Zahtev mora biti validan JSON." });
       return;
+    }
+    if (request.url === "/api/ai/practice-plan") {
+      emitSecurityEvent(activeSecurityEvents, {
+        correlationId: crypto.randomUUID(),
+        event: "unexpected_error",
+        outcome: "failed",
+        reason: "internal_error",
+        statusCode: 500,
+        providerAttemptCount: 0,
+        toolCallCount: 0,
+      });
     }
     console.error("[http] Internal request error.");
     sendJson(response, 500, { success: false, message: "Interna greska servera." });

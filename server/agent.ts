@@ -183,9 +183,14 @@ export async function runPracticePlan(
   try {
     for (let stepNumber = 1; stepNumber <= MAX_AGENT_STEPS; stepNumber += 1) {
       ensureRunActive();
-      const step = createStepEvidence(stepNumber, options.provider, options.modelName);
+      const step = createStepEvidence(
+        stepNumber,
+        options.provider,
+        options.model.modelName ?? options.modelName,
+      );
       steps.push(step);
       const stepRequest: AgentModelStepRequest = {
+        runId,
         stepNumber: stepNumber as 1 | 2 | 3,
         goal: request.goal,
         sessionFacts: projectSessionFacts(stats),
@@ -253,9 +258,10 @@ export async function runPracticePlan(
         step.status = decision.plan.completed ? "success" : "incomplete";
         step.validationOutcome = "final_valid";
         if (decision.plan.completed) {
+          const safePlan = normalizeFinalPlanEvidence(decision.plan);
           return createResult(200, {
             success: true,
-            plan: { ...decision.plan, completed: true },
+            plan: { ...safePlan, completed: true },
             evaluation: latestEvaluation,
           }, "completed", "goal_completed");
         }
@@ -396,6 +402,7 @@ export async function runPracticePlan(
     }
     return createResult(statusCodeFor(reason), failedResponse(), status, reason);
   } finally {
+    options.model.completeRun?.(runId);
     if (deadlineTimer !== undefined) {
       clearTimeout(deadlineTimer);
     }
@@ -434,9 +441,11 @@ export async function runPracticePlan(
           attemptTimeoutMs,
           trackOperation,
         );
+        recordSelectedModel();
         step.latencyMs += Math.max(0, now() - attemptStartedAt);
         return output;
       } catch (error) {
+        recordSelectedModel();
         step.latencyMs += Math.max(0, now() - attemptStartedAt);
         providerHttpStatus = error instanceof AgentModelError
           ? error.httpStatus ?? null
@@ -472,6 +481,13 @@ export async function runPracticePlan(
         ensureRunActive();
         retryCount += 1;
       }
+    }
+
+    function recordSelectedModel(): void {
+      const selectedModelName = options.model.getSelectedModelName?.(stepRequest) ??
+        options.model.modelName ?? options.modelName;
+      if (!step.modelAttempts) step.modelAttempts = [];
+      step.modelAttempts.push(selectedModelName);
     }
   }
 
@@ -540,7 +556,7 @@ export async function runPracticePlan(
           confidence: "low" as const,
           completed: false as const,
         };
-    const parsedPlan = practicePlanFinalSchema.parse(plan);
+    const parsedPlan = normalizeFinalPlanEvidence(practicePlanFinalSchema.parse(plan));
     return createResult(200, {
       success: true,
       plan: { ...parsedPlan, completed: false },
@@ -619,6 +635,18 @@ function isValidFinal(
     return false;
   }
   return true;
+}
+
+function normalizeFinalPlanEvidence(
+  plan: ReturnType<typeof practicePlanFinalSchema.parse>,
+): ReturnType<typeof practicePlanFinalSchema.parse> {
+  return {
+    ...plan,
+    evidence: plan.evidence.map((item) => ({
+      ...item,
+      finding: `Potvrđeno lokalnim evaluatorom: ${item.field}.`,
+    })),
+  };
 }
 
 function isToolFailure(

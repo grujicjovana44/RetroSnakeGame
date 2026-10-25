@@ -218,6 +218,7 @@ export const agentStepEvidenceSchema = z.object({
   stepNumber: z.number().int().min(1).max(3),
   provider: z.enum(["gemini", "fake"]),
   model: z.string().min(1).max(100),
+  modelAttempts: z.array(z.string().min(1).max(100)).max(2).optional(),
   latencyMs: z.number().finite().nonnegative(),
   decisionKind: z.enum(["tool_request", "final", "refusal"]).nullable(),
   status: agentStepStatusSchema,

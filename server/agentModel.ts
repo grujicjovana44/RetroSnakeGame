@@ -2,6 +2,7 @@ import type { GameSummary } from "./api";
 import type { PracticeEvaluation, PracticeGoal } from "./agentContracts";
 
 export type AgentModelStepRequest = {
+  runId?: string;
   stepNumber: 1 | 2 | 3;
   goal: PracticeGoal;
   sessionFacts: Pick<GameSummary, "score" | "durationSeconds" | "foodCollected">;
@@ -15,7 +16,84 @@ export type AgentModelStepRequest = {
 };
 
 export interface AgentModel {
+  readonly modelName?: string;
+  completeRun?(runId: string): void;
+  getSelectedModelName?(request: AgentModelStepRequest): string | undefined;
   requestDecision(request: AgentModelStepRequest, signal: AbortSignal): Promise<unknown>;
+}
+
+export type FallbackAgentModelOptions = {
+  primary: AgentModel;
+  fallback: AgentModel;
+  primaryModelName: string;
+  fallbackModelName: string;
+  onModelAttempt?: (runId: string | undefined, modelName: string) => void;
+};
+
+/**
+ * Switches models only after a transient primary failure. The agent owns the
+ * retry counter, timeout and deadline; this wrapper only selects the model for
+ * the next attempt of the same step.
+ */
+export class FallbackAgentModel implements AgentModel {
+  public readonly modelName: string;
+  private readonly runStates = new Map<string, { useFallback: boolean }>();
+  private readonly requestStates = new WeakMap<object, { useFallback: boolean }>();
+  private readonly selectedModels = new WeakMap<object, string>();
+
+  public constructor(private readonly options: FallbackAgentModelOptions) {
+    this.modelName = `${options.primaryModelName}->${options.fallbackModelName}`;
+  }
+
+  public get activeRunCount(): number {
+    return this.runStates.size;
+  }
+
+  public async requestDecision(
+    request: AgentModelStepRequest,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const state = request.runId
+      ? (this.runStates.get(request.runId) ?? { useFallback: false })
+      : (this.requestStates.get(request) ?? { useFallback: false });
+    if (request.runId) this.runStates.set(request.runId, state);
+    else this.requestStates.set(request, state);
+    const selected = state.useFallback ? this.options.fallback : this.options.primary;
+    const selectedModelName = state.useFallback
+      ? this.options.fallbackModelName
+      : this.options.primaryModelName;
+    this.selectedModels.set(request, selectedModelName);
+    this.options.onModelAttempt?.(request.runId, selectedModelName);
+    try {
+      return await selected.requestDecision(request, signal);
+    } catch (error) {
+      if (!state.useFallback && isFallbackEligible(error)) {
+        state.useFallback = true;
+      }
+      throw error;
+    }
+  }
+
+  public completeRun(runId: string): void {
+    this.runStates.delete(runId);
+  }
+
+  public getSelectedModelName(request: AgentModelStepRequest): string | undefined {
+    return this.selectedModels.get(request);
+  }
+}
+
+function isFallbackEligible(error: unknown): boolean {
+  if (!(error instanceof AgentModelError)) return false;
+  if (error.code === "rate_limit" || error.code === "provider_auth_or_quota") {
+    return false;
+  }
+  if (error.httpStatus === 404 || error.httpStatus === 400 || error.httpStatus === 401 || error.httpStatus === 403) {
+    return false;
+  }
+  if (error.httpStatus === 408 || error.httpStatus === 500 ||
+    error.httpStatus === 502 || error.httpStatus === 503) return true;
+  return error.code === "provider_timeout" || error.code === "provider_unavailable";
 }
 
 export type AgentModelErrorCode =
@@ -38,7 +116,11 @@ export class AgentModelError extends Error {
     this.name = "AgentModelError";
     this.retryable = code === "provider_timeout" ||
       code === "provider_unavailable" ||
-      code === "rate_limit";
+      code === "rate_limit" ||
+      options.httpStatus === 408 ||
+      options.httpStatus === 500 ||
+      options.httpStatus === 502 ||
+      options.httpStatus === 503;
     if (code === "rate_limit" &&
         options.retryAfterMs !== undefined &&
         Number.isFinite(options.retryAfterMs) &&

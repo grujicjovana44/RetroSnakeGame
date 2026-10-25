@@ -2,7 +2,7 @@
 
 ## Status and source of truth
 
-Status: approved for documentation, implementation not authorized.
+Status: implemented; final evidence and human sign-off remain pending.
 
 This specification defines the Week 08 security-hardening scope for the
 existing RetroSnake W05 Practice Plan agent. It supplements, but does not
@@ -146,9 +146,9 @@ limit.
 | Final evidence items | 0–5 | existing, `server/agentContracts.ts` | T06/T17 |
 | Survival target maximum | 86,400 | existing, `server/agentTools.ts` | T08 |
 | Food target maximum | 10,000 | existing, `server/agentTools.ts` | T08 |
-| HTTP response size | To confirm | no explicit W08 value | T02/T16 |
-| Model token cap | To confirm per adapter | not established in W08 review | T09/T12 |
-| Security event retention | To confirm; must be bounded | W08 implementation decision | T14 |
+| HTTP response size | No explicit byte limit | current implementation has no separate response-byte cap | T02/T16; residual limitation |
+| Model token cap | 2,048 output tokens per Gemini adapter request | `server/geminiAgentModel.ts` | T09/T12 |
+| Security event retention | 500 events | `server/securityEvents.ts` | T14 |
 
 ### FR-07a Unknown game-summary fields
 
@@ -225,6 +225,7 @@ normal game/AI operation.
 | Provider configuration/key | Server environment | Server-only configuration | Never | Runtime only |
 | Usage telemetry | Server | Sanitized schema, no session ID | Never | Local usage file |
 | Security event | Server | Fixed enums, bounded counters and correlation ID | Never | Bounded local event sink/log |
+| High score | Browser `localStorage` key `snake_highscore` | `getHighScore`/`saveHighScore`; numeric local-only display state | Never | Browser localStorage; not server authority or privilege |
 
 ## Threat model: nine risks
 

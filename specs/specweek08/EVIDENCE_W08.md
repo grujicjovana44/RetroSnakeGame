@@ -24,6 +24,20 @@ Status: implementation/test evidence recorded; human contribution and final sign
 | `npm.cmd audit --audit-level=moderate` (after) | Passed | `found 0 vulnerabilities` |
 | `npm.cmd audit --omit=dev --audit-level=moderate` (after) | Passed | `found 0 vulnerabilities` |
 
+Latest human PowerShell rerun (date not recorded) confirmed both audit modes:
+
+```text
+npm.cmd audit --audit-level=moderate
+found 0 vulnerabilities
+
+npm.cmd audit --omit=dev --audit-level=moderate
+found 0 vulnerabilities
+```
+
+These results replace the earlier temporary `audit endpoint unavailable`
+observation for the final dependency-audit status. No dependency or lockfile
+changes were made during this rerun.
+
 Baseline fake-provider W05 input/expected output: the full unit/integration suite
 and existing E2E suite passed. A separately archived full request/response
 fixture was not saved in the terminal output.
@@ -49,7 +63,7 @@ Observed architecture/evidence: HTTP validation remains in `server/api.ts`/`serv
 
 Nine risks and priority risks R1-R3 are defined in `SPEC.md`.
 
-Observed controls and test results: T08-02, T08-03, T08-04, T08-05, T08-08, the full unit/integration suite, and T16 passed. Provider audit remains unavailable.
+Observed controls and test results: T08-02, T08-03, T08-04, T08-05, T08-08, the full unit/integration suite, and T16 passed. Dependency audits were available and both recorded 0 vulnerabilities; no separate provider audit was required.
 
 ## 5. Invariants and configuration
 
@@ -135,7 +149,7 @@ Configured limits and observed values: 16 KiB HTTP body; 10 requests per 60 seco
 - Production response headers: passed in T16 for CSP, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy`.
 - CSP blocked-resource proof: passed with an intercepted cross-origin synthetic script resource; it did not execute.
 - Normal production game/assets/AI proof: production-preview game canvas and all 14 E2E browser flows passed; backend AI calls were route-mocked in E2E.
-- Secret sentinel and log injection proof: T14 synthetic process-environment test passed without modifying `.env`; provider/tool sentinel leakage tests passed. Audit endpoint was unavailable.
+- Secret sentinel and provider/tool leakage proof: T14 synthetic process-environment test passed without modifying `.env`; unexpected tool fields and raw provider/tool sentinels were not forwarded. Preflight security-event sanitization now has a regression test for malformed JSON and forbidden origin. A dedicated newline/prefix log-injection fixture remains open and is not claimed as passed. Dependency audit was completed separately and both audit modes recorded 0 vulnerabilities. A separate provider audit was not performed.
 
 ## 9. Team contributions and AI assistance
 

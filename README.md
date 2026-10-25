@@ -2,7 +2,7 @@
 
 A modern take on the classic **Snake game**, featuring procedural obstacles, standard and golden food, score tracking, High Score persistence, and a strictly typed TypeScript architecture.
 
-> 🎮 W03 core game with W04 AI Advice and the W05 bounded AI Practice Plan.
+> 🎮 W03 core game with W04 AI Advice, the W05 bounded AI Practice Plan, and W08 security hardening.
 
 ---
 
@@ -86,8 +86,11 @@ The Gemini key stays on the server; the browser receives only validated plan
 data or a generic safe error. Each run is limited to 3 agent steps, 2 tool
 calls, 6 provider attempts, a 30-second total deadline, a 10-second per-call
 timeout, a 250 ms local-tool watchdog, and at most one retry per step. The
-feature uses one allowlisted Gemini model per run; it does not fall back across
-providers.
+Week 08 hardening keeps the provider, limits, tool registry, and validation
+policy server-owned. The production Practice Plan currently uses
+`gemini-3.1-flash-lite` as primary and `gemini-3.5-flash` as a bounded fallback
+for transient provider failures only. W04 `GEMINI_MODEL_CHAIN` remains separate
+and is not changed by the Practice Plan fallback.
 
 The backend validates tool proposals, evaluator results, and final plan
 evidence. Only the fixed evaluator is callable, and logs omit prompts, secrets,
@@ -96,9 +99,10 @@ not provide collision history, session ownership is anonymous, and a run can
 take up to 30 seconds.
 
 To enable live AI Advice and Practice Plan, set `GEMINI_API_KEY` and, optionally,
-`GEMINI_MODEL_CHAIN` in the ignored `server/.env` file. The W05 Practice Plan
-uses the first configured allowlisted Gemini model. Start `npm run dev:backend`
-and `npm run dev` in separate terminals. Verify changes with `npm run typecheck`,
+`GEMINI_MODEL_CHAIN` in the ignored `server/.env` file. `GEMINI_MODEL_CHAIN`
+configures only the W04 AI Advice chain; the W05 Practice Plan uses its
+server-defined `gemini-3.1-flash-lite` primary and `gemini-3.5-flash` fallback.
+Start `npm run dev:backend` and `npm run dev` in separate terminals. Verify changes with `npm run typecheck`,
 `npm test`, `npm run build`, and `npm run test:e2e`.
 
 W05 documents: [SPEC](specs/specweek05/SPEC.md) ·
@@ -110,6 +114,47 @@ W05 documents: [SPEC](specs/specweek05/SPEC.md) ·
 [AI_USAGE_LOG](specs/specweek05/AI_USAGE_LOG.md) ·
 [LIVE_SMOKE_RUNBOOK](specs/specweek05/LIVE_SMOKE_RUNBOOK.md) ·
 [DEMO_SCRIPT](specs/specweek05/DEMO_SCRIPT.md).
+
+### Week 08 Security Hardening
+
+Week 08 adds security controls around the existing W05 flow without introducing
+login, cookies, a database, or a new agent tool:
+
+* strict server-side `gameSummary`, Practice Plan, tool-argument, tool-result,
+  and final-response validation;
+* HTTP preflight and status mapping: malformed JSON and schema errors return
+  `400`, oversized bodies return `413`, and unknown or privileged summary fields
+  are rejected;
+* server-owned limits: 16 KiB request bodies, 10 Practice Plan requests per
+  60 seconds per remote key, two active Practice Plan executions per local
+  server process, three agent steps, two tool calls, six provider attempts,
+  two attempts per step, 30-second run deadline, 10-second provider timeout,
+  and a 250 ms tool watchdog;
+* cancellation-aware provider/tool execution and cleanup that keeps a
+  concurrency slot occupied until late work settles;
+* a closed read-only evaluator boundary with same-run evidence validation and
+  protection against forged, repeated, out-of-range, or unknown tool calls;
+* structured security events with server-generated correlation IDs and bounded
+  provider/tool counters, without prompts, secrets, raw provider responses, or
+  session identifiers;
+* CORS enforcement and documented CSRF applicability for the anonymous UUID
+  session model; UUIDs are resource identifiers, not authenticated ownership;
+* text-only browser rendering, production CSP and security headers, and
+  Playwright coverage for inert untrusted content and blocked resources;
+* synthetic-secret, log-injection, cross-run evidence, rate-limit,
+  concurrency, cancellation, and production-browser regression tests.
+
+The W08 evidence and complete T00–T17 matrix are documented in
+[`specs/specweek08/EVIDENCE_W08.md`](specs/specweek08/EVIDENCE_W08.md). The
+implementation plan is in
+[`specs/specweek08/SPEC.md`](specs/specweek08/SPEC.md),
+[`specs/specweek08/PLAN.md`](specs/specweek08/PLAN.md), and
+[`specs/specweek08/TASKS.md`](specs/specweek08/TASKS.md).
+
+Post-W08 reliability work records live smoke observations for the approved
+Gemini models. The successful `gemini-3.5-flash` smoke test is not a
+statistical reliability guarantee; a separate `gemini-3.6-flash` test recorded
+HTTP 503 failures.
 
 ### 🧪 Testing and Validation
 
@@ -272,6 +317,11 @@ RetroSnakeGame/
 │       ├── AI_USAGE_LOG.md
 │       ├── LIVE_SMOKE_RUNBOOK.md
 │       └── DEMO_SCRIPT.md
+│   └── specweek08/
+│       ├── SPEC.md
+│       ├── PLAN.md
+│       ├── TASKS.md
+│       └── EVIDENCE_W08.md
 │
 ├── server/
 │   ├── .env.example

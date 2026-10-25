@@ -93,9 +93,9 @@ export type GeminiAgentModelOptions = {
 };
 
 export class GeminiAgentModel implements AgentModel {
+  public readonly modelName: string;
   private readonly apiKey: string;
   private readonly fetchImplementation: Fetch;
-  private readonly modelName: string;
 
   public constructor(options: GeminiAgentModelOptions) {
     this.apiKey = options.apiKey;

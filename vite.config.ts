@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 const securityHeaders = {
   "Content-Security-Policy": [
     "default-src 'self'",
-    "base-uri 'self'",
+    "base-uri 'none'",
     "object-src 'none'",
     "frame-ancestors 'none'",
     "script-src 'self'",

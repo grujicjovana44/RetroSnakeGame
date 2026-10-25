@@ -11,12 +11,18 @@ import {
 } from "../server/agentTools";
 import { GeminiAgentModel } from "../server/geminiAgentModel";
 import { runPracticePlan, SAFE_AGENT_ERROR_MESSAGE, type AgentRunOptions } from "../server/agent";
-import { createBackendServer, type BackendServerOptions } from "../server/server";
+import {
+  createBackendServer,
+  PRACTICE_PLAN_FALLBACK_MODEL,
+  PRACTICE_PLAN_PRIMARY_MODEL,
+  type BackendServerOptions,
+} from "../server/server";
 import { createRateLimiter } from "../server/httpSecurity";
 import { createConcurrencyLimiter } from "../server/concurrency";
 import {
   AgentModelError,
   FakeAgentModelScriptExhaustedError,
+  FallbackAgentModel,
   ScriptedFakeAgentModel,
   type AgentModel,
   type AgentModelStepRequest,
@@ -819,6 +825,379 @@ describe("Gemini agent model adapter", () => {
 });
 
 describe("bounded Practice Plan orchestrator", () => {
+  it("uses the fallback after a transient primary failure without replaying the evaluator", async () => {
+    const primary = new ScriptedFakeAgentModel(["provider-error"]);
+    const fallback = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const attemptedModels: string[] = [];
+    const model = new FallbackAgentModel({
+      primary,
+      fallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+      onModelAttempt: (_runId, modelName) => attemptedModels.push(modelName),
+    });
+
+    const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model, {
+      timing: { retryDelayMs: 0 },
+    }));
+
+    expect(result.statusCode).toBe(200);
+    expect(result.evidence).toMatchObject({
+      status: "completed",
+      providerAttemptCount: 3,
+      toolCallCount: 1,
+      steps: [
+        { model: "primary->fallback", modelAttempts: ["primary", "fallback"] },
+        { model: "primary->fallback", modelAttempts: ["fallback"] },
+      ],
+    });
+    expect(primary.callCount).toBe(1);
+    expect(fallback.callCount).toBe(2);
+    expect(attemptedModels).toEqual(["primary", "fallback", "fallback"]);
+    expect(fallback.requests[0].priorEvaluations).toEqual([]);
+    expect(fallback.requests[1].priorEvaluations).toHaveLength(1);
+  });
+
+  it("does not use the fallback for a non-transient rate limit error", async () => {
+    let primaryCalls = 0;
+    const primary: AgentModel = {
+      modelName: "primary",
+      requestDecision: async () => {
+        primaryCalls += 1;
+        throw new AgentModelError("rate_limit", { httpStatus: 429 });
+      },
+    };
+    const fallback = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const attemptedModels: string[] = [];
+    const model = new FallbackAgentModel({
+      primary,
+      fallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+      onModelAttempt: (_runId, modelName) => attemptedModels.push(modelName),
+    });
+
+    const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model, {
+      timing: { retryDelayMs: 0 },
+    }));
+
+    expect(result.statusCode).toBe(503);
+    expect(result.evidence.stopReason).toBe("rate_limit");
+    expect(primaryCalls).toBe(2);
+    expect(fallback.callCount).toBe(0);
+    expect(attemptedModels).toEqual(["primary", "primary"]);
+  });
+
+  it("uses the fallback for provider_error with a transient 503 status", async () => {
+    const primary: AgentModel = {
+      modelName: "primary",
+      requestDecision: async () => {
+        throw new AgentModelError("provider_error", { httpStatus: 503 });
+      },
+    };
+    const fallback = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const attemptedModels: string[] = [];
+    const model = new FallbackAgentModel({
+      primary,
+      fallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+      onModelAttempt: (_runId, modelName) => attemptedModels.push(modelName),
+    });
+
+    const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model, {
+      timing: { retryDelayMs: 0 },
+    }));
+
+    expect(result.statusCode).toBe(200);
+    expect(result.evidence.providerAttemptCount).toBe(3);
+    expect(result.evidence.steps[0].modelAttempts).toEqual(["primary", "fallback"]);
+    expect(attemptedModels).toEqual(["primary", "fallback", "fallback"]);
+  });
+
+  it("uses the fallback after the primary provider watchdog timeout", async () => {
+    const primary = new ScriptedFakeAgentModel(["timeout"]);
+    const fallback = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const attemptedModels: string[] = [];
+    const model = new FallbackAgentModel({
+      primary,
+      fallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+      onModelAttempt: (_runId, modelName) => attemptedModels.push(modelName),
+    });
+
+    const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model, {
+      timing: { providerAttemptTimeoutMs: 5, retryDelayMs: 0 },
+    }));
+
+    expect(result.statusCode).toBe(200);
+    expect(result.evidence.providerAttemptCount).toBe(3);
+    expect(primary.abortCount).toBe(1);
+    expect(fallback.callCount).toBe(2);
+    expect(attemptedModels).toEqual(["primary", "fallback", "fallback"]);
+  });
+
+  it("keeps the primary model when the first attempt succeeds", async () => {
+    const primary = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const fallback = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const attemptedModels: string[] = [];
+    const model = new FallbackAgentModel({
+      primary,
+      fallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+      onModelAttempt: (_runId, modelName) => attemptedModels.push(modelName),
+    });
+
+    const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model));
+
+    expect(result.statusCode).toBe(200);
+    expect(primary.callCount).toBe(2);
+    expect(fallback.callCount).toBe(0);
+    expect(attemptedModels).toEqual(["primary", "primary"]);
+  });
+
+  it.each([
+    ["provider_error", 400],
+    ["provider_auth_or_quota", 403],
+  ] as const)("does not use the fallback for %s", async (code, httpStatus) => {
+    const primary: AgentModel = {
+      modelName: "primary",
+      requestDecision: async () => {
+        throw new AgentModelError(code, { httpStatus });
+      },
+    };
+    const fallback = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const attemptedModels: string[] = [];
+    const model = new FallbackAgentModel({
+      primary,
+      fallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+      onModelAttempt: (_runId, modelName) => attemptedModels.push(modelName),
+    });
+
+    const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model));
+
+    expect(result.statusCode).toBe(502);
+    expect(result.evidence.stopReason).toBe(code);
+    expect(fallback.callCount).toBe(0);
+    expect(attemptedModels).toEqual(["primary"]);
+  });
+
+  it("returns the fallback failure without restarting the run or adding a tool call", async () => {
+    const primary = new ScriptedFakeAgentModel(["provider-error"]);
+    const fallback = new ScriptedFakeAgentModel(["provider-error"]);
+    const attemptedModels: string[] = [];
+    const model = new FallbackAgentModel({
+      primary,
+      fallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+      onModelAttempt: (_runId, modelName) => attemptedModels.push(modelName),
+    });
+
+    const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model, {
+      timing: { retryDelayMs: 0 },
+    }));
+
+    expect(result.statusCode).toBe(502);
+    expect(result.evidence.stopReason).toBe("provider_unavailable");
+    expect(result.evidence.providerAttemptCount).toBe(2);
+    expect(result.evidence.toolCallCount).toBe(0);
+    expect(primary.callCount).toBe(1);
+    expect(fallback.callCount).toBe(1);
+    expect(attemptedModels).toEqual(["primary", "fallback"]);
+  });
+
+  it("does not switch after the total deadline or client cancellation", async () => {
+    const deadlinePrimary = new ScriptedFakeAgentModel(["timeout"]);
+    const deadlineFallback = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const deadlineModel = new FallbackAgentModel({
+      primary: deadlinePrimary,
+      fallback: deadlineFallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+    });
+    const deadlineResult = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(deadlineModel, {
+      timing: { deadlineMs: 5, providerAttemptTimeoutMs: 100, retryDelayMs: 0 },
+    }));
+    expect(deadlineResult.evidence.stopReason).toBe("deadline");
+    expect(deadlineFallback.callCount).toBe(0);
+
+    const cancelPrimary = new ScriptedFakeAgentModel(["timeout"]);
+    const cancelFallback = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const cancelModel = new FallbackAgentModel({
+      primary: cancelPrimary,
+      fallback: cancelFallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+    });
+    const controller = new AbortController();
+    const pending = runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(cancelModel, {
+      signal: controller.signal,
+      timing: { providerAttemptTimeoutMs: 500, retryDelayMs: 0 },
+    }));
+    controller.abort();
+    const cancelled = await pending;
+    expect(cancelled.evidence.stopReason).toBe("cancelled");
+    expect(cancelFallback.callCount).toBe(0);
+  });
+
+  it("isolates model-attempt history for two concurrent runs and cleans both states", async () => {
+    const primary: AgentModel = {
+      requestDecision: async () => {
+        throw new AgentModelError("provider_unavailable");
+      },
+    };
+    const fallback: AgentModel = {
+      requestDecision: async (request) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return request.stepNumber === 1
+          ? {
+              kind: "tool_request",
+              toolName: "evaluate_practice_goal",
+              arguments: { goal: request.goal, targetValue: request.candidateRange.min + 1 },
+            }
+          : finalDecisionForRequest(request);
+      },
+    };
+    const attemptsByRun = new Map<string, string[]>();
+    const model = new FallbackAgentModel({
+      primary,
+      fallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+      onModelAttempt: (runId, modelName) => {
+        if (!runId) throw new Error("Expected a runId for orchestrator attempts.");
+        const attempts = attemptsByRun.get(runId) ?? [];
+        attempts.push(modelName);
+        attemptsByRun.set(runId, attempts);
+      },
+    });
+    const sessions = new Map([
+      [sessionId, validStats],
+      ["8d42bb7a-82b4-4d47-a62c-5e13f8c4a561", validStats],
+    ]);
+    const first = runPracticePlan({ sessionId, goal: "survive_longer" }, {
+      ...createPlanRunOptions(model),
+      sessions,
+      timing: { retryDelayMs: 0 },
+    });
+    const second = runPracticePlan({
+      sessionId: "8d42bb7a-82b4-4d47-a62c-5e13f8c4a561",
+      goal: "survive_longer",
+    }, {
+      ...createPlanRunOptions(model),
+      sessions,
+      timing: { retryDelayMs: 0 },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    expect(model.activeRunCount).toBe(2);
+    const results = await Promise.all([first, second]);
+
+    expect(results.every((result) => result.statusCode === 200)).toBe(true);
+    expect(attemptsByRun.size).toBe(2);
+    expect([...attemptsByRun.values()]).toEqual([
+      ["primary", "fallback", "fallback"],
+      ["primary", "fallback", "fallback"],
+    ]);
+    expect(model.activeRunCount).toBe(0);
+  });
+
+  it.each(["success", "provider-error", "timeout", "cancelled"] as const)(
+    "cleans fallback state after %s",
+    async (outcome) => {
+      const primary = outcome === "provider-error"
+        ? new ScriptedFakeAgentModel([() => { throw new AgentModelError("provider_auth_or_quota"); }])
+        : outcome === "timeout" || outcome === "cancelled"
+          ? new ScriptedFakeAgentModel(["timeout"])
+          : new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+      const fallback = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+      const model = new FallbackAgentModel({
+        primary,
+        fallback,
+        primaryModelName: "primary",
+        fallbackModelName: "fallback",
+      });
+      const controller = new AbortController();
+      const pending = runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model, {
+        signal: outcome === "cancelled" ? controller.signal : undefined,
+        timing: outcome === "timeout"
+          ? { deadlineMs: 5, providerAttemptTimeoutMs: 50, retryDelayMs: 0 }
+          : { retryDelayMs: 0 },
+      }));
+      if (outcome === "cancelled") controller.abort();
+      await pending;
+      expect(model.activeRunCount).toBe(0);
+    },
+  );
+
+  it("does not retain active fallback state after many completed runs", async () => {
+    const primary: AgentModel = {
+      requestDecision: async (request) => request.stepNumber === 1
+        ? {
+            kind: "tool_request",
+            toolName: "evaluate_practice_goal",
+            arguments: { goal: request.goal, targetValue: request.candidateRange.min + 1 },
+          }
+        : finalDecisionForRequest(request),
+    };
+    const fallback = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const model = new FallbackAgentModel({
+      primary,
+      fallback,
+      primaryModelName: "primary",
+      fallbackModelName: "fallback",
+    });
+
+    for (let index = 0; index < 100; index += 1) {
+      const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model));
+      expect(result.statusCode).toBe(200);
+      expect(model.activeRunCount).toBe(0);
+    }
+  });
+
+  it("T09 forwards only bounded untrusted browser metrics to the fake provider", async () => {
+    const untrustedStats: GameSummary = {
+      score: 1_000_000,
+      durationSeconds: 86_000,
+      collisions: 10_000,
+      foodCollected: 10_000,
+    };
+    const observedRequests: AgentModelStepRequest[] = [];
+    const model: AgentModel = {
+      modelName: "t09-untrusted-channel",
+      requestDecision: async (request) => {
+        observedRequests.push(request);
+        return request.stepNumber === 1
+          ? {
+              kind: "tool_request",
+              toolName: "evaluate_practice_goal",
+              arguments: { goal: request.goal, targetValue: request.candidateRange.min + 1 },
+            }
+          : finalDecisionForRequest(request);
+      },
+    };
+
+    const result = await runPracticePlan(
+      { sessionId, goal: "survive_longer" },
+      createPlanRunOptions(model, {}, untrustedStats),
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(observedRequests[0].sessionFacts).toEqual({
+      score: 1_000_000,
+      durationSeconds: 86_000,
+      foodCollected: 10_000,
+    });
+    expect(observedRequests[0].sessionFacts).not.toHaveProperty("role");
+    expect(observedRequests[0].sessionFacts).not.toHaveProperty("provider");
+    expect(observedRequests[0].sessionFacts).not.toHaveProperty("model");
+  });
+
   it("completes a normal run with step-one context free of rating criteria", async () => {
     const model = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
     const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model));
@@ -1236,6 +1615,35 @@ describe("bounded Practice Plan orchestrator", () => {
     expect(invalidSchemaFinal.evidence.stopReason).toBe("invalid_final_output");
   });
 
+  it("does not present model-authored finding prose as independently verified evidence", async () => {
+    const model = new ScriptedFakeAgentModel([
+      "valid-tool-proposal",
+      (request) => finalDecisionForRequest(request, {
+        evidence: [{
+          source: "evaluate_practice_goal",
+          field: "evaluation.rating",
+          value: "realistic",
+          finding: "Unsupported claim: collisions guarantee future success and another run was inspected.",
+        }],
+      }),
+    ]);
+
+    const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model));
+
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toMatchObject({
+      success: true,
+      plan: {
+        evidence: [{
+          field: "evaluation.rating",
+          finding: "Potvrđeno lokalnim evaluatorom: evaluation.rating.",
+        }],
+      },
+    });
+    expect(JSON.stringify(result.body)).not.toContain("collisions guarantee");
+    expect(JSON.stringify(result.body)).not.toContain("another run");
+  });
+
   it("retries transient provider failures once per step and preserves safe status mapping", async () => {
     const delays: number[] = [];
     const transient = new ScriptedFakeAgentModel([
@@ -1386,6 +1794,13 @@ describe("bounded Practice Plan orchestrator", () => {
 });
 
 describe("Practice Plan HTTP endpoint", () => {
+  it("uses the approved production Practice Plan model pair", () => {
+    expect(PRACTICE_PLAN_PRIMARY_MODEL).toBe("gemini-3.1-flash-lite");
+    expect(PRACTICE_PLAN_FALLBACK_MODEL).toBe("gemini-3.5-flash");
+    expect(new GeminiAgentModel({ apiKey: "test", modelName: PRACTICE_PLAN_FALLBACK_MODEL }).modelName)
+      .toBe("gemini-3.5-flash");
+  });
+
   it("T08-03 records bounded security events for allowed, rejected and completed runs", async () => {
     const sessions = new Map<string, GameSummary>();
     const securityEvents: SecurityEventLog = [];
@@ -1436,6 +1851,45 @@ describe("Practice Plan HTTP endpoint", () => {
       providerAttemptCount: 2,
       toolCallCount: 1,
     });
+  });
+
+  it("T08-03 records malformed JSON and forbidden-origin security events", async () => {
+    const securityEvents: SecurityEventLog = [];
+    const logs = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    try {
+      await withBackendServer({
+        securityEvents,
+        practicePlanModel: new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]),
+        practicePlanProvider: "fake",
+        allowedOrigins: new Set(["http://localhost:5173"]),
+        practicePlanLimiter: () => true,
+      }, async (baseUrl) => {
+        const malformedResponse = await fetch(`${baseUrl}/api/ai/practice-plan`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: "http://localhost:5173" },
+          body: "{invalid-json\n[security] forged-event-prefix",
+        });
+        expect(malformedResponse.status).toBe(400);
+
+        const forbiddenResponse = await fetch(`${baseUrl}/api/ai/practice-plan`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: "https://untrusted.example" },
+          body: JSON.stringify({ sessionId: crypto.randomUUID(), goal: "survive_longer" }),
+        });
+        expect(forbiddenResponse.status).toBe(403);
+      });
+
+      expect(securityEvents.map((event) => [event.event, event.reason])).toEqual(expect.arrayContaining([
+        ["body_rejected", "invalid_json"],
+        ["origin_rejected", "origin_not_allowed"],
+      ]));
+      const serializedLogs = logs.mock.calls.flat().join(" ");
+      expect(serializedLogs).not.toContain("untrusted.example");
+      expect(serializedLogs).not.toContain("forged-event-prefix");
+    } finally {
+      logs.mockRestore();
+    }
   });
 
   it("T08-02 rejects game-summary policy fields and oversized bodies independently", async () => {

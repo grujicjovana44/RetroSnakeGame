@@ -2,9 +2,9 @@
 
 ## Status
 
-Documentation approved for creation. Application implementation is not yet
-approved. This plan maps `specs/specweek08/SPEC.md` to the smallest safe change
-set and validation evidence.
+Implementation completed for the approved change set. Final evidence and human
+sign-off remain pending. This plan maps `specs/specweek08/SPEC.md` to the
+smallest safe change set and validation evidence.
 
 ## Existing controls to preserve
 
@@ -50,7 +50,7 @@ collected`, never inferred from the new implementation.
 | Rate limit | 10 requests/minute per remote address exists | Test independently from concurrency | `server/httpSecurity.ts`, tests |
 | Concurrency | No global Practice Plan limiter | Add two-slot limiter with cleanup/quarantine | `server/server.ts` or small helper |
 | Cancellation | Abort is propagated, but timeout must not imply physical completion | Track operation completion and test late work | `server/agent.ts`, helper |
-| Security events | Usage telemetry exists; separate stream absent | Add bounded typed recorder and allowed/completed events | `server/server.ts`, helper |
+| Security events | Usage telemetry exists; separate stream absent | Add bounded typed recorder and allowed/completed plus preflight/error events | `server/server.ts`, helper |
 | Browser output | `textContent` is used | Add browser XSS/DOM regression tests | `e2e/game.spec.ts` |
 | CSP/headers | No production header proof | Add minimal production serving/header path | Existing serving path, integration/browser tests |
 | Secrets/logs | Safe usage/provider error paths exist | Add sentinel/log injection/bundle evidence | tests and production checks |
