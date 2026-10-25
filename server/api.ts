@@ -5,7 +5,7 @@ export const gameSummarySchema = z.object({
   durationSeconds: z.number().finite().min(0).max(86_400),
   collisions: z.number().int().min(0).max(10_000),
   foodCollected: z.number().int().min(0).max(10_000),
-});
+}).strict();
 
 export const adviceResponseSchema = z.object({
   summary: z.string().min(1).max(500),

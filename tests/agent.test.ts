@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Server as HttpServer } from "node:http";
 import {
   createAgentToolDispatcher,
@@ -11,6 +13,7 @@ import { GeminiAgentModel } from "../server/geminiAgentModel";
 import { runPracticePlan, SAFE_AGENT_ERROR_MESSAGE, type AgentRunOptions } from "../server/agent";
 import { createBackendServer, type BackendServerOptions } from "../server/server";
 import { createRateLimiter } from "../server/httpSecurity";
+import { createConcurrencyLimiter } from "../server/concurrency";
 import {
   AgentModelError,
   FakeAgentModelScriptExhaustedError,
@@ -19,6 +22,7 @@ import {
   type AgentModelStepRequest,
 } from "../server/agentModel";
 import type { GameSummary } from "../server/api";
+import { securityEventSchema, type SecurityEventLog } from "../server/securityEvents";
 import {
   agentModelDecisionSchema,
   agentRunEvidenceSchema,
@@ -993,6 +997,76 @@ describe("bounded Practice Plan orchestrator", () => {
     expect(model.callCount).toBe(1);
   });
 
+  it("T08-08 rejects an unexpected tool-result field without forwarding it", async () => {
+    const sentinel = "tool-result-secret-sentinel";
+    const model = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const result = await runPracticePlan({ sessionId, goal: "survive_longer" }, createPlanRunOptions(model, {
+      toolExecutor: (input, context) => {
+        const valid = evaluatePracticeGoal(input, context);
+        if (!valid.success) return valid;
+        return {
+          success: true,
+          evaluation: { ...valid.evaluation, unexpectedField: sentinel },
+        };
+      },
+    }));
+
+    expect(result.statusCode).toBe(502);
+    expect(result.evidence.stopReason).toBe("invalid_tool_result");
+    expect(JSON.stringify(result.body)).not.toContain(sentinel);
+    expect(JSON.stringify(result.evidence)).not.toContain(sentinel);
+    expect(model.callCount).toBe(1);
+  });
+
+  it("T08-14 loads only the synthetic test secret and keeps it out of server surfaces", async () => {
+    const syntheticSecret = process.env.W08_TEST_SYNTHETIC_SECRET;
+    expect(syntheticSecret).toBe("w08-synthetic-secret-7d2c");
+
+    const modelRequests: string[] = [];
+    const model: AgentModel = {
+      requestDecision: async (request) => {
+        modelRequests.push(JSON.stringify(request));
+        throw new Error(`${syntheticSecret}\nsynthetic provider stack`);
+      },
+    };
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await withBackendServer({
+        sessions: new Map([[sessionId, validStats]]),
+        practicePlanModel: model,
+        practicePlanProvider: "fake",
+        practicePlanModelName: "synthetic-secret-test",
+        allowedOrigins: new Set(["http://localhost:5173"]),
+        practicePlanLimiter: () => true,
+      }, async (baseUrl) => {
+        const response = await postJson(`${baseUrl}/api/ai/practice-plan`, {
+          sessionId,
+          goal: "survive_longer",
+        });
+        const responseText = await response.text();
+        expect(response.status).toBe(502);
+        expect(responseText).not.toContain(syntheticSecret);
+      });
+
+      const logs = [...info.mock.calls, ...error.mock.calls]
+        .flatMap((call) => call.map((value) => String(value)))
+        .join("\n");
+      expect(logs).not.toContain(syntheticSecret);
+      expect(modelRequests.join("\n")).not.toContain(syntheticSecret);
+
+      const builtFiles = readdirSync(resolve(process.cwd(), "dist"), { recursive: true })
+        .filter((file): file is string => typeof file === "string" && /\.(js|map)$/.test(file));
+      const builtContent = builtFiles
+        .map((file) => readFileSync(resolve(process.cwd(), "dist", file), "utf8"))
+        .join("\n");
+      expect(builtContent).not.toContain(syntheticSecret);
+    } finally {
+      info.mockRestore();
+      error.mockRestore();
+    }
+  });
+
   it("rejects repeated calls before the Step-2 justification gate", async () => {
     const model = new ScriptedFakeAgentModel([
       { mode: "tool", targetValue: 150 },
@@ -1312,6 +1386,382 @@ describe("bounded Practice Plan orchestrator", () => {
 });
 
 describe("Practice Plan HTTP endpoint", () => {
+  it("T08-03 records bounded security events for allowed, rejected and completed runs", async () => {
+    const sessions = new Map<string, GameSummary>();
+    const securityEvents: SecurityEventLog = [];
+    const model = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+
+    await withBackendServer({
+      sessions,
+      securityEvents,
+      practicePlanModel: model,
+      practicePlanProvider: "fake",
+      practicePlanModelName: "scripted",
+      allowedOrigins: new Set(["http://localhost:5173"]),
+      practicePlanLimiter: () => true,
+    }, async (baseUrl) => {
+      const sessionResponse = await postJson(`${baseUrl}/api/game/session`, validStats);
+      const { sessionId: createdSessionId } = await sessionResponse.json() as { sessionId: string };
+      const completedResponse = await postJson(`${baseUrl}/api/ai/practice-plan`, {
+        sessionId: createdSessionId,
+        goal: "survive_longer",
+      });
+      expect(completedResponse.status).toBe(200);
+
+      const rejectedResponse = await postJson(`${baseUrl}/api/ai/practice-plan`, {
+        sessionId: "2b4f7b91-1c43-4b05-ae8a-bf4f6f11d9a6",
+        goal: "survive_longer",
+      });
+      expect(rejectedResponse.status).toBe(400);
+    });
+
+    expect(securityEvents.length).toBeGreaterThan(0);
+    for (const event of securityEvents) {
+      expect(securityEventSchema.safeParse(event).success).toBe(true);
+      expect(JSON.stringify(event)).not.toContain(sessionId);
+      expect(JSON.stringify(event)).not.toContain("score");
+    }
+
+    const eventNames = securityEvents.map((event) => event.event);
+    expect(eventNames).toEqual(expect.arrayContaining([
+      "request_allowed",
+      "agent_decision_allowed",
+      "tool_allowed",
+      "execution_completed",
+      "agent_decision_rejected",
+    ]));
+    expect(new Set(securityEvents.map((event) => event.correlationId)).size).toBe(2);
+    expect(securityEvents.find((event) => event.event === "execution_completed")).toMatchObject({
+      outcome: "completed",
+      providerAttemptCount: 2,
+      toolCallCount: 1,
+    });
+  });
+
+  it("T08-02 rejects game-summary policy fields and oversized bodies independently", async () => {
+    const sessions = new Map<string, GameSummary>();
+    const model = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const privilegedSummary = {
+      ...validStats,
+      ownerId: "attacker-controlled-owner",
+      role: "admin",
+      provider: "fake",
+      model: "attacker-model",
+      maxSteps: 999,
+      timeoutMs: 1,
+    };
+
+    try {
+      await withBackendServer({
+        sessions,
+        practicePlanModel: model,
+        practicePlanProvider: "fake",
+        practicePlanModelName: "scripted",
+        allowedOrigins: new Set(["http://localhost:5173"]),
+        practicePlanLimiter: () => true,
+      }, async (baseUrl) => {
+        const privilegedResponse = await postJson(`${baseUrl}/api/game/session`, privilegedSummary);
+        expect(privilegedResponse.status).toBe(400);
+        expect(sessions).toHaveLength(0);
+        expect(model.callCount).toBe(0);
+
+        const oversizedResponse = await postJson(`${baseUrl}/api/game/session`, {
+          ...validStats,
+          padding: "x".repeat(17 * 1024),
+        });
+        expect(oversizedResponse.status).toBe(413);
+        expect(sessions).toHaveLength(0);
+        expect(model.callCount).toBe(0);
+      });
+
+      const logs = info.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+      expect(logs).not.toContain("attacker-controlled-owner");
+      expect(logs).not.toContain("attacker-model");
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it("T08-02 accepts a valid game-summary boundary and normal Practice Plan flow", async () => {
+    const sessions = new Map<string, GameSummary>();
+    const model = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+
+    await withBackendServer({
+      sessions,
+      practicePlanModel: model,
+      practicePlanProvider: "fake",
+      practicePlanModelName: "scripted",
+      allowedOrigins: new Set(["http://localhost:5173"]),
+      practicePlanLimiter: () => true,
+    }, async (baseUrl) => {
+      const sessionResponse = await postJson(`${baseUrl}/api/game/session`, validStats);
+      expect(sessionResponse.status).toBe(201);
+      const { sessionId: createdSessionId } = await sessionResponse.json() as { sessionId: string };
+      expect(sessions.get(createdSessionId)).toEqual(validStats);
+
+      const planResponse = await postJson(`${baseUrl}/api/ai/practice-plan`, {
+        sessionId: createdSessionId,
+        goal: "survive_longer",
+      });
+      expect(planResponse.status).toBe(200);
+      expect((await planResponse.json() as { success?: boolean; evaluation?: unknown }).evaluation).toBeTruthy();
+      expect(model.callCount).toBe(2);
+    });
+  });
+
+  it("T15 keeps browser-supplied extreme metrics bounded and non-privileged", async () => {
+    const sessions = new Map<string, GameSummary>();
+    const model = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const manipulatedSummary = {
+      score: 1_000_000,
+      durationSeconds: 86_400,
+      collisions: 10_000,
+      foodCollected: 10_000,
+    } satisfies GameSummary;
+
+    await withBackendServer({
+      sessions,
+      practicePlanModel: model,
+      practicePlanProvider: "fake",
+      practicePlanModelName: "scripted",
+      allowedOrigins: new Set(["http://localhost:5173"]),
+      practicePlanLimiter: () => true,
+    }, async (baseUrl) => {
+      const sessionResponse = await postJson(`${baseUrl}/api/game/session`, manipulatedSummary);
+      expect(sessionResponse.status).toBe(201);
+      const sessionBody = await sessionResponse.json() as { sessionId: string; role?: string; confirmedRank?: unknown };
+      expect(sessionBody).not.toHaveProperty("role");
+      expect(sessionBody).not.toHaveProperty("confirmedRank");
+      expect(sessions.get(sessionBody.sessionId)).toEqual(manipulatedSummary);
+
+      const planResponse = await postJson(`${baseUrl}/api/ai/practice-plan`, {
+        sessionId: sessionBody.sessionId,
+        goal: "survive_longer",
+      });
+      expect(planResponse.status).toBe(200);
+      expect(await planResponse.json()).toMatchObject({ success: true, evaluation: null });
+      expect(model.callCount).toBe(0);
+      expect(sessions.get(sessionBody.sessionId)).toEqual(manipulatedSummary);
+    });
+  });
+
+  it("T08-02 returns 400 for malformed JSON before session creation", async () => {
+    const sessions = new Map<string, GameSummary>();
+    const model = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+
+    await withBackendServer({
+      sessions,
+      practicePlanModel: model,
+      practicePlanProvider: "fake",
+      practicePlanModelName: "scripted",
+      allowedOrigins: new Set(["http://localhost:5173"]),
+      practicePlanLimiter: () => true,
+    }, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/game/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: "http://localhost:5173" },
+        body: "{invalid-json",
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ success: false, message: "Zahtev mora biti validan JSON." });
+      expect(sessions).toHaveLength(0);
+      expect(model.callCount).toBe(0);
+    });
+  });
+
+  it("T08-00 baseline: rejects a schema-valid final with evidence from another run", async () => {
+    const firstSessionId = "7f15e9bc-8a31-4c0b-9bd5-e0c3d7c29be0";
+    const secondSessionId = "eab7b2b4-4d0f-4e9e-8f05-0a6d0e53d0b4";
+    const firstStats: GameSummary = { ...validStats, score: 100 };
+    const secondStats: GameSummary = { ...validStats, score: 220 };
+    const sessions = new Map<string, GameSummary>([
+      [firstSessionId, firstStats],
+      [secondSessionId, secondStats],
+    ]);
+
+    const firstRun = await runPracticePlan(
+      { sessionId: firstSessionId, goal: "survive_longer" },
+      createPlanRunOptions(
+        new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]),
+        { sessions },
+        firstStats,
+      ),
+    );
+    expect(firstRun.statusCode).toBe(200);
+    if (!firstRun.body.success || !firstRun.body.evaluation) {
+      throw new Error("Baseline first run did not produce a validated evaluation.");
+    }
+
+    const foreignEvidence = firstRun.body.evaluation.evidence.find(
+      (item) => item.field === "session.score",
+    );
+    if (!foreignEvidence) {
+      throw new Error("Baseline first run did not produce session.score evidence.");
+    }
+
+    let schemaValidFinal = false;
+    let secondModelCallCount = 0;
+    const secondModel = new ScriptedFakeAgentModel([
+      "valid-tool-proposal",
+      (request) => {
+        const decision = finalDecisionForRequest(request, {
+          evidence: [{
+            source: "evaluate_practice_goal",
+            field: foreignEvidence.field,
+            value: foreignEvidence.value,
+            finding: "Schema-valid evidence copied from another run.",
+          }],
+        });
+        schemaValidFinal = agentModelDecisionSchema.safeParse(decision).success;
+        secondModelCallCount += 1;
+        return decision;
+      },
+    ]);
+
+    const secondRun = await runPracticePlan(
+      { sessionId: secondSessionId, goal: "survive_longer" },
+      createPlanRunOptions(secondModel, { sessions }, secondStats),
+    );
+
+    expect(schemaValidFinal).toBe(true);
+    expect(secondModelCallCount).toBe(1);
+    expect(secondRun.statusCode).toBe(502);
+    expect(secondRun.body).toEqual({ success: false, message: SAFE_AGENT_ERROR_MESSAGE });
+    expect(secondRun.evidence.stopReason).toBe("invalid_final_output");
+    expect(secondRun.evidence.providerAttemptCount).toBe(2);
+    expect(secondRun.evidence.toolCallCount).toBe(1);
+    expect(sessions.get(secondSessionId)).toEqual(secondStats);
+  });
+
+  it("T08-04 limits three independent concurrent Practice Plan HTTP executions", async () => {
+    const sessionIds = [
+      "a0c90f11-7f36-4aec-9b28-63d4d5606801",
+      "b1d01f22-8a47-4bfd-ac39-74e5e6717912",
+      "c2e12f33-9b58-4cce-bd4a-85f6f7828023",
+    ];
+    const sessions = new Map<string, GameSummary>(sessionIds.map((id, index) => [
+      id,
+      { ...validStats, score: validStats.score + index },
+    ]));
+    let activeExecutions = 0;
+    let maxActiveExecutions = 0;
+    let modelCallCount = 0;
+    const model: AgentModel = {
+      requestDecision: async (request) => {
+        activeExecutions += 1;
+        maxActiveExecutions = Math.max(maxActiveExecutions, activeExecutions);
+        modelCallCount += 1;
+        try {
+          if (request.stepNumber === 1) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+            return {
+              kind: "tool_request",
+              toolName: "evaluate_practice_goal",
+              arguments: { goal: request.goal, targetValue: request.candidateRange.min + 1 },
+            };
+          }
+          return finalDecisionForRequest(request);
+        } finally {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          activeExecutions -= 1;
+        }
+      },
+    };
+
+    await withBackendServer({
+      sessions,
+      practicePlanModel: model,
+      practicePlanProvider: "fake",
+      practicePlanModelName: "delayed-baseline",
+      allowedOrigins: new Set(["http://localhost:5173"]),
+      practicePlanLimiter: () => true,
+    }, async (baseUrl) => {
+      const responses = await Promise.all(sessionIds.map((id) => postJson(
+        `${baseUrl}/api/ai/practice-plan`,
+        { sessionId: id, goal: "survive_longer" },
+      )));
+
+      expect(responses.map((response) => response.status).sort()).toEqual([200, 200, 429]);
+      const responseBodies = await Promise.all(responses
+        .filter((response) => response.status === 200)
+        .map((response) => response.json() as Promise<{
+          success?: boolean;
+          evaluation?: unknown;
+        }>));
+      expect(responseBodies.filter((body) => body.success && body.evaluation)).toHaveLength(2);
+      expect(maxActiveExecutions).toBe(2);
+      expect(modelCallCount).toBe(4);
+      expect(activeExecutions).toBe(0);
+
+      const nextResponse = await postJson(`${baseUrl}/api/ai/practice-plan`, {
+        sessionId: sessionIds[0],
+        goal: "survive_longer",
+      });
+      expect(nextResponse.status).toBe(200);
+      expect(activeExecutions).toBe(0);
+    });
+  });
+
+  it("T08-05 keeps HTTP concurrency slots occupied until late provider work settles", async () => {
+    const sessionIds = [
+      "d3f23a44-ac69-4ddf-8e5b-96a7f8939134",
+      "e4a34b55-bd70-4eef-9f6c-a7b8f904a245",
+      "f5b45c66-ce81-4ffb-a7d0-b8c9f015b356",
+    ];
+    const sessions = new Map<string, GameSummary>(sessionIds.map((id) => [id, validStats]));
+    const concurrency = createConcurrencyLimiter(2);
+    let modelCallCount = 0;
+    const model: AgentModel = {
+      requestDecision: async (request) => {
+        modelCallCount += 1;
+        if (modelCallCount <= 4) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return {
+            kind: "tool_request",
+            toolName: "evaluate_practice_goal",
+            arguments: { goal: request.goal, targetValue: request.candidateRange.min + 1 },
+          };
+        }
+        return request.stepNumber === 1
+          ? {
+              kind: "tool_request",
+              toolName: "evaluate_practice_goal",
+              arguments: { goal: request.goal, targetValue: request.candidateRange.min + 1 },
+            }
+          : finalDecisionForRequest(request);
+      },
+    };
+
+    await withBackendServer({
+      sessions,
+      practicePlanConcurrency: concurrency,
+      practicePlanTiming: { deadlineMs: 500, providerAttemptTimeoutMs: 5, retryDelayMs: 0 },
+      practicePlanModel: model,
+      practicePlanProvider: "fake",
+      practicePlanModelName: "late-baseline",
+      allowedOrigins: new Set(["http://localhost:5173"]),
+      practicePlanLimiter: () => true,
+    }, async (baseUrl) => {
+      const initialResponses = await Promise.all(sessionIds.map((id) => postJson(
+        `${baseUrl}/api/ai/practice-plan`,
+        { sessionId: id, goal: "survive_longer" },
+      )));
+
+      expect(initialResponses.map((response) => response.status).sort()).toEqual([429, 502, 502]);
+      expect(modelCallCount).toBe(4);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(concurrency.activeCount).toBe(0);
+
+      const nextResponse = await postJson(`${baseUrl}/api/ai/practice-plan`, {
+        sessionId: sessionIds[0],
+        goal: "survive_longer",
+      });
+      expect(nextResponse.status).toBe(200);
+      expect(concurrency.activeCount).toBe(0);
+    });
+  });
+
   it("serves the separate route with validated evaluation, CORS, bounded body and sanitized logging", async () => {
     const sessions = new Map<string, GameSummary>();
     const model = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
@@ -1340,6 +1790,7 @@ describe("Practice Plan HTTP endpoint", () => {
         expect(planResponse.status).toBe(200);
         expect(planBody).toMatchObject({ success: true, evaluation: { rating: "realistic" } });
         expect(planResponse.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
+        expect(planResponse.headers.get("access-control-allow-credentials")).toBeNull();
 
         const rejectedOrigin = await postJson(`${baseUrl}/api/ai/practice-plan`, {
           sessionId: session.sessionId,
@@ -1352,7 +1803,7 @@ describe("Practice Plan HTTP endpoint", () => {
           headers: { "Content-Type": "application/json", Origin: "http://localhost:5173" },
           body: JSON.stringify({ data: "x".repeat(17 * 1024) }),
         });
-        expect(oversized.status).toBe(400);
+        expect(oversized.status).toBe(413);
       });
 
       const logs = JSON.stringify(info.mock.calls);

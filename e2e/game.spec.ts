@@ -22,6 +22,73 @@ test("renders the game canvas and score HUD", async ({ page }) => {
   await expect(page.locator("#status")).toContainText("Status: igraš");
 });
 
+test("T16 applies production security headers and blocks an available script resource", async ({ page }) => {
+  const noCspPage = await page.context().newPage();
+  await noCspPage.route("https://untrusted.example/synthetic-forbidden.js", async (route) => {
+    await route.fulfill({
+      contentType: "application/javascript",
+      body: "window.__syntheticForbiddenScriptRan = true;",
+    });
+  });
+  await noCspPage.setContent("<html><head></head><body></body></html>");
+  await noCspPage.evaluate(() => {
+    const script = document.createElement("script");
+    script.src = "https://untrusted.example/synthetic-forbidden.js";
+    document.head.appendChild(script);
+  });
+  await noCspPage.waitForFunction(() => (window as Window & { __syntheticForbiddenScriptRan?: boolean }).__syntheticForbiddenScriptRan === true);
+  await expect(noCspPage.evaluate(() => (window as Window & { __syntheticForbiddenScriptRan?: boolean }).__syntheticForbiddenScriptRan ?? false))
+    .resolves.toBe(true);
+  await noCspPage.close();
+
+  await page.route("https://untrusted.example/synthetic-forbidden.js", async (route) => {
+    await route.fulfill({
+      contentType: "application/javascript",
+      body: "window.__syntheticForbiddenScriptRan = true;",
+    });
+  });
+
+  const response = await page.request.get("/");
+  const headers = response.headers();
+  expect(headers["content-security-policy"]).toContain("script-src 'self'");
+  expect(headers["content-security-policy"]).toContain("object-src 'none'");
+  expect(headers["x-content-type-options"]).toBe("nosniff");
+  expect(headers["x-frame-options"]).toBe("DENY");
+  expect(headers["referrer-policy"]).toBe("no-referrer");
+
+  await page.evaluate(() => {
+    const script = document.createElement("script");
+    script.src = "https://untrusted.example/synthetic-forbidden.js";
+    document.head.appendChild(script);
+  });
+  await page.clock.runFor(100);
+  expect(await page.evaluate(() => (window as Window & { __syntheticForbiddenScriptRan?: boolean }).__syntheticForbiddenScriptRan ?? false))
+    .toBe(false);
+  await expect(page.locator("#game")).toBeVisible();
+});
+
+test("T04/T05 render provider HTML, event and URL markers as inert text", async ({ page }) => {
+  const marker = "<img src=x onerror=window.__xssRan=true> javascript:alert(1) a < b";
+  await page.route("**/api/game/session", async (route) => {
+    await route.fulfill({ json: { sessionId: "xss-e2e-session" } });
+  });
+  await page.route("**/api/ai/advice", async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        advice: { summary: marker, recommendation: marker, category: "general" },
+      },
+    });
+  });
+
+  await triggerGameOver(page);
+  await page.getByRole("button", { name: "AI Advice" }).click();
+  await expect(page.locator("#ai-advice-summary")).toHaveText(marker);
+  await expect(page.locator("#ai-advice-recommendation")).toHaveText(marker);
+  expect(await page.locator("#ai-advice-panel img, #ai-advice-panel script").count()).toBe(0);
+  expect(await page.evaluate(() => (window as Window & { __xssRan?: boolean }).__xssRan ?? false)).toBe(false);
+});
+
 test("selects the difficulty for the next game", async ({ page }) => {
   const hardButton = page.getByRole("button", { name: "Brzo" });
 

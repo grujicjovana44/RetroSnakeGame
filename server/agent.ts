@@ -67,6 +67,7 @@ export type AgentRunResult = {
   statusCode: number;
   body: PracticePlanApiResponse;
   evidence: AgentRunEvidence;
+  cleanup: Promise<void>;
 };
 
 class AgentStopError extends Error {
@@ -95,6 +96,22 @@ export async function runPracticePlan(
   let providerHttpStatus: number | null = null;
   const steps: AgentStepEvidence[] = [];
   const toolDispatcher = createAgentToolDispatcher(options.toolExecutor);
+  const pendingOperations = new Set<Promise<unknown>>();
+
+  function trackOperation<T>(operation: Promise<T>): Promise<T> {
+    let tracked!: Promise<T>;
+    tracked = operation.finally(() => {
+      pendingOperations.delete(tracked);
+    });
+    pendingOperations.add(tracked);
+    return tracked;
+  }
+
+  async function waitForPendingOperations(): Promise<void> {
+    while (pendingOperations.size > 0) {
+      await Promise.allSettled([...pendingOperations]);
+    }
+  }
 
   const requestResult = practicePlanRequestSchema.safeParse(input);
   if (!requestResult.success) {
@@ -310,8 +327,11 @@ export async function runPracticePlan(
       step.validationOutcome = "not_checked";
       let dispatchResult;
       try {
+        const toolOperation = trackOperation(
+          Promise.resolve().then(() => toolDispatcher.dispatch(parsedToolInput, toolContext)),
+        );
         dispatchResult = await executeToolWithWatchdog(
-          () => toolDispatcher.dispatch(parsedToolInput, toolContext),
+          () => toolOperation,
           controller.signal,
           timing.toolTimeoutMs ?? TOOL_TIMEOUT_MS,
           now,
@@ -412,6 +432,7 @@ export async function runPracticePlan(
           stepRequest,
           controller.signal,
           attemptTimeoutMs,
+          trackOperation,
         );
         step.latencyMs += Math.max(0, now() - attemptStartedAt);
         return output;
@@ -486,7 +507,12 @@ export async function runPracticePlan(
       steps: steps.map((step) => ({ ...step })),
     };
     const evidence = agentRunEvidenceSchema.parse(candidateEvidence);
-    return { statusCode, body: practicePlanApiResponseSchema.parse(body), evidence };
+    return {
+      statusCode,
+      body: practicePlanApiResponseSchema.parse(body),
+      evidence,
+      cleanup: waitForPendingOperations(),
+    };
   }
 
   function createIncompleteResult(
@@ -621,6 +647,7 @@ async function callModelWithTimeout(
   request: AgentModelStepRequest,
   parentSignal: AbortSignal,
   timeoutMs: number,
+  trackOperation: <T>(operation: Promise<T>) => Promise<T>,
 ): Promise<unknown> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -641,8 +668,11 @@ async function callModelWithTimeout(
   });
 
   try {
+    const modelOperation = trackOperation(
+      Promise.resolve().then(() => model.requestDecision(request, controller.signal)),
+    );
     return await Promise.race([
-      model.requestDecision(request, controller.signal),
+      modelOperation,
       timeout,
       parentAbort,
     ]);
