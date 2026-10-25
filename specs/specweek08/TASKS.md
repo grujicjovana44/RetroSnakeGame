@@ -2,9 +2,13 @@
 
 ## Status and rules
 
-Tasks are ordered and not complete. A task is complete only after its
-acceptance evidence exists in `EVIDENCE_W08.md`. Human approval is required
-before application-code implementation begins.
+Implementation and regression-test tasks T08-02 through T08-09 are complete
+for the reviewed change set; their final results are recorded in
+`EVIDENCE_W08.md`. T08-00 is completed using the original W05 report plus an
+archived pre-W08 source replay for the three comparisons; the replay is not
+described as contemporaneous. T08-10 is complete: team contributions, review,
+and sign-off are recorded in `EVIDENCE_W08.md`. No result may be claimed
+without corresponding evidence.
 
 ## T08-00 — Preserve baseline checkpoint
 
@@ -12,19 +16,17 @@ Dependencies: none. Evidence only.
 
 Acceptance:
 
-- record branch, commit and working-tree state;
-- record game/W05 scope and commands;
-- human runs baseline typecheck, unit tests, build and applicable browser tests;
-- record one normal fake-provider W05 input and expected output;
-- record current invalid JSON, oversized body, rate-limit and provider-error
-  behavior.
-- collect the invalid/oversized baseline, the schema-valid cross-run evidence
-  baseline, and three independent valid delayed concurrency requests before
-  any application-code change;
-- if a fixture is missing, prepare it against the unmodified application
-  before implementing the corresponding protection.
+- record the pre-W08 source checkpoint and current review working-tree state;
+- replay typecheck, unit tests, build, applicable browser tests, and normal
+  fake-provider flow against the archived pre-W08 source;
+- collect invalid/oversized, schema-valid cross-run, and three-request
+  concurrency comparisons against the archived pre-W08 source;
+- state clearly that this replay is retrospective and does not replace the
+  original human-run checkpoint before implementation.
 
-Results remain blank until the human team executes the checks.
+The retrospective replay and its limits are recorded in `EVIDENCE_W08.md`.
+The original human operator name and contemporaneous runtime output were not
+preserved, and must not be invented.
 
 ## T08-01 — Finalize W08 contracts
 

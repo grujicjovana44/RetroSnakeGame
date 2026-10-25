@@ -345,24 +345,24 @@ Every important protection has a positive and negative case.
 
 | ID | Scenario | Test type | Positive case | Negative case | Evidence |
 |---|---|---|---|---|---|
-| T00 | Normal game and W05 flow | Unit/integration/browser | Two model steps and one evaluator call succeed | Safe provider failure remains bounded | Pending |
-| T01 | Invalid HTTP request | Integration | Valid request succeeds | Invalid JSON/schema gives 400, no provider/tool | Pending |
-| T02 | Oversized and privileged fields | Integration | Boundary-size valid request succeeds | 413/invalid policy fields, no provider/tool | Pending |
-| T03 | Unknown/unavailable resource | Integration | Own existing anonymous session works | Missing/unknown session gives generic 400 | Pending |
-| T04 | XSS final response | Browser | Normal text renders as text | Marker is not executable and DOM is safe | Pending |
-| T05 | HTML/Markdown/link content | Browser | Apostrophe, Serbian text and `a < b` remain usable | HTML/event/javascript URL is not executable | Pending |
-| T06 | Invalid model/final output | Unit/integration | Valid decision completes | Malformed/forged final is rejected | Pending |
-| T07 | Unknown/inherited tool names | Unit/integration | Allowlisted evaluator runs | `constructor`, `toString` and unknown name do not execute | Pending |
-| T08 | Invalid tool args/scope | Unit/integration | Inclusive valid range succeeds | Invalid type, goal, session or range is rejected | Pending |
-| T09 | Prompt/provider injection | Unit/integration | Normal fake provider succeeds | Real numeric browser channel stays bounded; malicious provider proposal is rejected | Pending |
-| T10 | Invalid/oversized tool result | Unit/integration | Normal result is forwarded | Unknown fields, forged values or oversized result are rejected | Pending |
-| T11 | Repeated calls/budget exhaustion | Unit/integration | One allowed revision works | Repeated call/step/tool/attempt limits stop work | Pending |
-| T12 | Per-attempt timeout/deadline/cancellation | Unit/integration | In-budget provider completes | Per-attempt timeout, total deadline and late result are separate failures | Pending |
-| T13 | Rate and concurrency | Integration | One request and two distinct concurrent requests succeed | Rate excess and third distinct concurrent request are independently rejected | Pending |
-| T14 | Secret/log injection | Integration/build | Safe event/error contains fixed metadata | Sentinel/raw error/newline marker is absent or sanitized | Pending |
-| T15 | Manipulated browser state | Integration | Bounded summary remains usable as untrusted data | Manipulation gives no privilege or confirmed rank | Pending |
-| T16 | Production CSP/headers | Browser/integration | Game, assets, API and AI work | Available forbidden resource is blocked by actual CSP | Pending |
-| T17 | Cross-run evidence | Integration | Same-run evidence final succeeds | Schema-valid foreign/stale evidence is rejected | Pending |
+| T00 | Normal game and W05 flow | Unit/integration/browser | Two model steps and one evaluator call succeed | Safe provider failure remains bounded | Passed; `EVIDENCE_W08.md` §6 |
+| T01 | Invalid HTTP request | Integration | Valid request succeeds | Invalid JSON/schema gives 400, no provider/tool | Passed; `EVIDENCE_W08.md` §6 |
+| T02 | Oversized and privileged fields | Integration | Boundary-size valid request succeeds | 413/invalid policy fields, no provider/tool | Passed; `EVIDENCE_W08.md` §6-7 |
+| T03 | Unknown/unavailable resource | Integration | Own existing anonymous session works | Missing/unknown session gives generic 400 | Passed; `EVIDENCE_W08.md` §6 |
+| T04 | XSS final response | Browser | Normal text renders as text | Marker is not executable and DOM is safe | Passed on AI Advice and W05 Practice Plan; `EVIDENCE_W08.md` §6 |
+| T05 | HTML/Markdown/link content | Browser | Apostrophe, Serbian text and `a < b` remain usable | HTML/event/javascript URL is not executable | Passed; `EVIDENCE_W08.md` §6 |
+| T06 | Invalid model/final output | Unit/integration | Valid decision completes | Malformed/forged final is rejected | Passed; `EVIDENCE_W08.md` §6 |
+| T07 | Unknown/inherited tool names | Unit/integration | Allowlisted evaluator runs | `constructor`, `toString` and unknown name do not execute | Passed; `EVIDENCE_W08.md` §6 |
+| T08 | Invalid tool args/scope | Unit/integration | Inclusive valid range succeeds | Invalid type, goal, session or range is rejected | Passed; `EVIDENCE_W08.md` §6 |
+| T09 | Prompt/provider injection | Unit/integration | Normal fake provider succeeds | Real numeric browser channel stays bounded; malicious provider proposal is rejected | Passed with numeric-only channel limitation; `EVIDENCE_W08.md` §6, §10 |
+| T10 | Invalid/oversized tool result | Unit/integration | Normal result is forwarded | Unknown fields, forged values or oversized result are rejected | Passed; `EVIDENCE_W08.md` §6 |
+| T11 | Repeated calls/budget exhaustion | Unit/integration | One allowed revision works | Repeated call/step/tool/attempt limits stop work | Passed; `EVIDENCE_W08.md` §6 |
+| T12 | Per-attempt timeout/deadline/cancellation | Unit/integration | In-budget provider completes | Per-attempt timeout, total deadline and late result are separate failures | Passed; `EVIDENCE_W08.md` §6 |
+| T13 | Rate and concurrency | Integration | One request and two distinct concurrent requests succeed | Rate excess and third distinct concurrent request are independently rejected | Passed; `EVIDENCE_W08.md` §6-7 |
+| T14 | Secret/log injection | Integration/build | Safe event/error contains fixed metadata | Sentinel/raw error/newline marker is absent or sanitized | Passed; `EVIDENCE_W08.md` §6, §8 |
+| T15 | Manipulated browser state | Integration | Bounded summary remains usable as untrusted data | Manipulation gives no privilege or confirmed rank | Passed; `EVIDENCE_W08.md` §6 |
+| T16 | Production CSP/headers | Browser/integration | Game, assets, API and AI work | Available forbidden resource is blocked by actual CSP | Passed; `EVIDENCE_W08.md` §6, §8 |
+| T17 | Cross-run evidence | Integration | Same-run evidence final succeeds | Schema-valid foreign/stale evidence is rejected | Passed; `EVIDENCE_W08.md` §6-7 |
 
 T09 deliberately does not invent a free-text browser-to-model channel. The
 current model context contains projected numeric session facts; the malicious

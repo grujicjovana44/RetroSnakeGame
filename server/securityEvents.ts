@@ -26,6 +26,7 @@ export const securityReasonSchema = z.enum([
   "body_too_large",
   "origin_not_allowed",
   "invalid_input",
+  "rate_limit",
   "session_data_invalid",
   "goal_unavailable",
   "concurrency_limit",

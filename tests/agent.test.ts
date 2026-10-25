@@ -1843,7 +1843,7 @@ describe("Practice Plan HTTP endpoint", () => {
       "agent_decision_allowed",
       "tool_allowed",
       "execution_completed",
-      "agent_decision_rejected",
+      "request_rejected",
     ]));
     expect(new Set(securityEvents.map((event) => event.correlationId)).size).toBe(2);
     expect(securityEvents.find((event) => event.event === "execution_completed")).toMatchObject({
@@ -1889,6 +1889,107 @@ describe("Practice Plan HTTP endpoint", () => {
       expect(serializedLogs).not.toContain("forged-event-prefix");
     } finally {
       logs.mockRestore();
+    }
+  });
+
+  it("T08-03 rejects invalid Practice Plan preflight before rate, concurrency or provider work", async () => {
+    const securityEvents: SecurityEventLog = [];
+    const model = new ScriptedFakeAgentModel(["valid-tool-proposal", "final"]);
+    const concurrency = createConcurrencyLimiter(2);
+    let rateChecks = 0;
+
+    await withBackendServer({
+      securityEvents,
+      practicePlanConcurrency: concurrency,
+      practicePlanModel: model,
+      practicePlanProvider: "fake",
+      practicePlanLimiter: () => { rateChecks += 1; return true; },
+      allowedOrigins: new Set(["http://localhost:5173"]),
+    }, async (baseUrl) => {
+      const response = await postJson(`${baseUrl}/api/ai/practice-plan`, {
+        sessionId: "not-a-uuid",
+        goal: "survive_longer",
+        maxSteps: 999,
+      });
+      expect(response.status).toBe(400);
+    });
+
+    expect(rateChecks).toBe(0);
+    expect(concurrency.activeCount).toBe(0);
+    expect(model.callCount).toBe(0);
+    expect(securityEvents.map((event) => event.event)).toEqual(["request_rejected"]);
+    expect(securityEvents[0]).toMatchObject({
+      outcome: "rejected",
+      statusCode: 400,
+      providerAttemptCount: 0,
+      toolCallCount: 0,
+    });
+  });
+
+  it("T08-03 records invalid tool results under the dedicated event code", async () => {
+    const securityEvents: SecurityEventLog = [];
+    const sessions = new Map([[sessionId, validStats]]);
+    const model = new ScriptedFakeAgentModel(["valid-tool-proposal"]);
+
+    await withBackendServer({
+      sessions,
+      securityEvents,
+      practicePlanModel: model,
+      practicePlanProvider: "fake",
+      practicePlanToolExecutor: (input, context) => {
+        const valid = evaluatePracticeGoal(input, context);
+        if (!valid.success) return valid;
+        return { success: true, evaluation: { ...valid.evaluation, unexpected: "test-only" } };
+      },
+      allowedOrigins: new Set(["http://localhost:5173"]),
+      practicePlanLimiter: () => true,
+    }, async (baseUrl) => {
+      const response = await postJson(`${baseUrl}/api/ai/practice-plan`, {
+        sessionId,
+        goal: "survive_longer",
+      });
+      expect(response.status).toBe(502);
+    });
+
+    expect(securityEvents.some((event) => event.event === "tool_result_rejected" &&
+      event.reason === "invalid_tool_result")).toBe(true);
+    expect(model.callCount).toBe(1);
+  });
+
+  it("T14 serializes provider-controlled newlines without allowing log-line injection", async () => {
+    const sessions = new Map([[sessionId, validStats]]);
+    const securityEvents: SecurityEventLog = [];
+    const injectedToolName = "unknown-tool\n[security] forged-event";
+    const model = new ScriptedFakeAgentModel([{
+      kind: "tool_request",
+      toolName: injectedToolName,
+      arguments: { goal: "survive_longer", targetValue: 51 },
+    }]);
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    try {
+      await withBackendServer({
+        sessions,
+        securityEvents,
+        practicePlanModel: model,
+        practicePlanProvider: "fake",
+        allowedOrigins: new Set(["http://localhost:5173"]),
+        practicePlanLimiter: () => true,
+      }, async (baseUrl) => {
+        const response = await postJson(`${baseUrl}/api/ai/practice-plan`, {
+          sessionId,
+          goal: "survive_longer",
+        });
+        expect(response.status).toBe(502);
+      });
+
+      const logLines = info.mock.calls.map((call) => call.map(String).join(" "));
+      expect(logLines.some((line) => line.includes(injectedToolName))).toBe(false);
+      expect(logLines.some((line) => line.includes("\\n[security] forged-event"))).toBe(true);
+      expect(securityEvents.some((event) => "forged-event" in event)).toBe(false);
+      expect(model.callCount).toBe(1);
+    } finally {
+      info.mockRestore();
     }
   });
 
@@ -2024,7 +2125,7 @@ describe("Practice Plan HTTP endpoint", () => {
     });
   });
 
-  it("T08-00 baseline: rejects a schema-valid final with evidence from another run", async () => {
+  it("T17 rejects a schema-valid final with evidence from another run", async () => {
     const firstSessionId = "7f15e9bc-8a31-4c0b-9bd5-e0c3d7c29be0";
     const secondSessionId = "eab7b2b4-4d0f-4e9e-8f05-0a6d0e53d0b4";
     const firstStats: GameSummary = { ...validStats, score: 100 };
@@ -2275,8 +2376,10 @@ describe("Practice Plan HTTP endpoint", () => {
     const model = new ScriptedFakeAgentModel(Array.from({ length: 10 }, () => "refusal" as const));
     const limiter = createRateLimiter(10, 60_000, () => 1_000);
     const sessions = new Map<string, GameSummary>([[sessionId, validStats]]);
+    const securityEvents: SecurityEventLog = [];
     await withBackendServer({
       sessions,
+      securityEvents,
       practicePlanModel: model,
       practicePlanProvider: "fake",
       practicePlanModelName: "scripted",
@@ -2298,6 +2401,12 @@ describe("Practice Plan HTTP endpoint", () => {
       expect(await limited.json()).toEqual({ success: false, message: "Plan trenutno nije moguće napraviti bezbedno. Pokušajte ponovo kasnije." });
     });
     expect(model.callCount).toBe(10);
+    expect(securityEvents[securityEvents.length - 1]).toMatchObject({
+      event: "rate_limited",
+      reason: "rate_limit",
+      providerAttemptCount: 0,
+      toolCallCount: 0,
+    });
   });
 
   it("returns a generic 503 when no server-side model is configured", async () => {

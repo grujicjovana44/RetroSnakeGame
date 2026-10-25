@@ -4,10 +4,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runPracticePlan, SAFE_AGENT_ERROR_MESSAGE, type AgentRunTiming } from "./agent";
+import type { AgentToolExecutor } from "./agentTools";
+import { practicePlanRequestSchema } from "./agentContracts";
 import type { AgentModel } from "./agentModel";
 import { FallbackAgentModel } from "./agentModel";
 import { GeminiAgentModel } from "./geminiAgentModel";
 import { createSession, requestAdvice, type InFlightAdvice, type SessionStore } from "./service";
+import { parseGameSummary } from "./api";
 import { GeminiAdviceProvider, parseGeminiModelChain } from "./provider";
 import { loadUsageLog, persistUsageLog, recordUsage, type UsageLog } from "./usage";
 import { applyCorsHeaders, createRateLimiter, parseAllowedOrigins } from "./httpSecurity";
@@ -78,6 +81,7 @@ export type BackendServerOptions = {
   securityEvents?: SecurityEventLog;
   practicePlanConcurrency?: PracticePlanConcurrency;
   practicePlanTiming?: AgentRunTiming;
+  practicePlanToolExecutor?: AgentToolExecutor;
 };
 
 async function persistUsageSafely(): Promise<void> {
@@ -194,6 +198,23 @@ async function handleRequest(
     }
     if (request.url === "/api/ai/practice-plan") {
       const correlationId = crypto.randomUUID();
+      const practiceRequest = practicePlanRequestSchema.safeParse(input);
+      const storedSession = practiceRequest.success
+        ? parseGameSummary(activeSessions.get(practiceRequest.data.sessionId))
+        : null;
+      if (!practiceRequest.success || !storedSession) {
+        emitSecurityEvent(activeSecurityEvents, {
+          correlationId,
+          event: "request_rejected",
+          outcome: "rejected",
+          reason: "invalid_input",
+          statusCode: 400,
+          providerAttemptCount: 0,
+          toolCallCount: 0,
+        });
+        sendJson(response, 400, { success: false, message: SAFE_AGENT_ERROR_MESSAGE });
+        return;
+      }
       const remoteAddress = request.socket.remoteAddress ?? "unknown";
       if (!allowPracticeRequest(remoteAddress)) {
         logPracticeTerminal("request_rate_limited");
@@ -201,7 +222,7 @@ async function handleRequest(
           correlationId,
           event: "rate_limited",
           outcome: "rejected",
-          reason: "invalid_input",
+          reason: "rate_limit",
           statusCode: 429,
           providerAttemptCount: 0,
           toolCallCount: 0,
@@ -260,6 +281,7 @@ async function handleRequest(
           sessions: activeSessions,
           signal: clientAbortController.signal,
           timing: options.practicePlanTiming,
+          toolExecutor: options.practicePlanToolExecutor,
           });
         } catch {
           logPracticeTerminal("provider_error");
@@ -311,13 +333,20 @@ async function handleRequest(
           toolCallCount,
         });
       } else {
+        const isToolResultRejection = result.evidence.stopReason === "invalid_tool_result";
+        const isToolRejection = isToolResultRejection || [
+          "unknown_tool", "invalid_tool_args", "tool_not_justified", "tool_limit",
+          "repeated_call", "tool_timeout", "tool_error",
+        ].includes(result.evidence.stopReason ?? "");
         emitSecurityEvent(activeSecurityEvents, {
           correlationId,
-          event: result.evidence.stopReason === "deadline" || result.evidence.stopReason === "provider_timeout"
+          event: isToolResultRejection
+            ? "tool_result_rejected"
+            : result.evidence.stopReason === "deadline" || result.evidence.stopReason === "provider_timeout"
             ? "deadline_reached"
             : result.evidence.stopReason?.startsWith("provider_")
               ? "provider_failure"
-              : result.evidence.stopReason?.startsWith("tool_")
+              : isToolRejection
                 ? "tool_rejected"
                 : "agent_decision_rejected",
           outcome: result.evidence.stopReason?.startsWith("provider_") ? "failed" : "rejected",

@@ -89,6 +89,53 @@ test("T04/T05 render provider HTML, event and URL markers as inert text", async 
   expect(await page.evaluate(() => (window as Window & { __xssRan?: boolean }).__xssRan ?? false)).toBe(false);
 });
 
+test("T04/T05 render W05 Practice Plan provider text as inert text", async ({ page }) => {
+  const marker = "<img src=x onerror=window.__practicePlanXssRan=true> javascript:alert(1) a < b";
+  await page.route("**/api/game/session", async (route) => {
+    await route.fulfill({ json: { sessionId: "practice-plan-xss-e2e-session" } });
+  });
+  await page.route("**/api/ai/practice-plan", async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        plan: {
+          goal: "survive_longer",
+          targetValue: 51,
+          summary: marker,
+          recommendation: marker,
+          evidence: [],
+          confidence: "medium",
+          completed: true,
+        },
+        evaluation: {
+          tool: "evaluate_practice_goal",
+          goal: "survive_longer",
+          targetValue: 51,
+          goalBaseline: 50,
+          rating: "realistic",
+          metrics: {
+            score: 100,
+            durationSeconds: 50,
+            foodCollected: 2,
+            foodPerMinute: 2.4,
+            scorePerFood: 50,
+            targetRatio: 1.02,
+          },
+          evidence: [],
+        },
+      },
+    });
+  });
+
+  await triggerGameOver(page);
+  await page.locator("#practice-goal").selectOption("survive_longer");
+  await page.getByRole("button", { name: "Practice Plan" }).click();
+  await expect(page.locator("#practice-plan-summary")).toHaveText(marker);
+  await expect(page.locator("#practice-plan-recommendation")).toHaveText(marker);
+  expect(await page.locator("#practice-plan-panel img, #practice-plan-panel script").count()).toBe(0);
+  expect(await page.evaluate(() => (window as Window & { __practicePlanXssRan?: boolean }).__practicePlanXssRan ?? false)).toBe(false);
+});
+
 test("selects the difficulty for the next game", async ({ page }) => {
   const hardButton = page.getByRole("button", { name: "Brzo" });
 
