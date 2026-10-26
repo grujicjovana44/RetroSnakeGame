@@ -14,10 +14,11 @@ sign-off recorded on 2026-10-25.
   team's original W05 implementation, tests and live smoke. The archived-source
   replay described here is a separate retrospective comparison for W08's three
   before/after scenarios; it supplements the original W05 report.
-- Final reproducibility checkpoint: `main@2262f9920fe1a32a96da29d911c78e6484589e36`
-  (`origin/main` points to the same commit). The tracked working tree was clean
-  at that final commit; the current checkout additionally contains an
-  untracked `scripts/` directory that is outside the committed checkpoint.
+- Final W08 implementation checkpoint: `main@2262f9920fe1a32a96da29d911c78e6484589e36`.
+  The subsequent documentation alignment commit is `1c8aef25a141b593e6888531401b99ade0f15ac2`.
+  The implementation checkpoint remains reproducible independently of the
+  documentation-only follow-up. The current checkout additionally contains an
+  untracked `scripts/` directory that is outside the committed W08 artifacts.
 - Game/W05 scope: RetroSnake W05 Practice Plan agent and browser game.
 - Review and final verification date: 2026-10-25, Europe/Belgrade. The team
   confirms that both Jovana Grujić and Jelena Kantarević locally ran the final
@@ -236,10 +237,10 @@ remote cancellation remains unobservable.
 
 ## 11. Final checkpoint
 
-- Final branch/commit: `main@2262f9920fe1a32a96da29d911c78e6484589e36`;
-  `origin/main` matches this commit.
-- Final tracked working tree: clean at the committed checkpoint; the current
-  checkout has untracked `scripts/`, which is not part of this checkpoint.
+- Final W08 implementation checkpoint: `main@2262f9920fe1a32a96da29d911c78e6484589e36`.
+- Documentation alignment commit: `1c8aef25a141b593e6888531401b99ade0f15ac2`.
+- The current checkout has untracked `scripts/`, which is not part of the W08
+  implementation or documentation artifacts.
 - Human sign-off: Jovana Grujić and Jelena Kantarević — reviewed and approved, 2026-10-25.
 - W08 complete decision: Technical validations pass; team contributions and
   human sign-off are recorded above.
