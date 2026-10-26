@@ -2,7 +2,8 @@
 
 ## Status and source of truth
 
-Status: implemented; final evidence and human sign-off remain pending.
+Status: implemented; final evidence and human sign-off recorded on the final
+`main@2262f9920fe1a32a96da29d911c78e6484589e36` checkpoint.
 
 This specification defines the Week 08 security-hardening scope for the
 existing RetroSnake W05 Practice Plan agent. It supplements, but does not
@@ -51,7 +52,9 @@ Out of scope:
 The session model remains anonymous/demo. A UUID identifies a server-held
 session record and binds one agent execution to that record; it does not prove
 authenticated ownership. Browser-provided game statistics are untrusted,
-bounded input and are not a confirmed leaderboard or privilege source.
+bounded input and are not a confirmed leaderboard or privilege source. A
+server-authoritative competitive-score model is not part of W08 and remains a
+separate future design/implementation decision.
 
 ## Functional requirements
 

@@ -14,9 +14,10 @@ sign-off recorded on 2026-10-25.
   team's original W05 implementation, tests and live smoke. The archived-source
   replay described here is a separate retrospective comparison for W08's three
   before/after scenarios; it supplements the original W05 report.
-- Current review branch/commit: `main` / `3c9777d` before the current review
-  changes; current changes are uncommitted for human review.
-- Working tree at review start: clean.
+- Final reproducibility checkpoint: `main@2262f9920fe1a32a96da29d911c78e6484589e36`
+  (`origin/main` points to the same commit). The tracked working tree was clean
+  at that final commit; the current checkout additionally contains an
+  untracked `scripts/` directory that is outside the committed checkpoint.
 - Game/W05 scope: RetroSnake W05 Practice Plan agent and browser game.
 - Review and final verification date: 2026-10-25, Europe/Belgrade. The team
   confirms that both Jovana Grujić and Jelena Kantarević locally ran the final
@@ -66,12 +67,15 @@ All observed test runs used fake/scripted providers or browser route mocks. No
 live Gemini call was made. Vitest reported that two values were loaded from
 `server\\.env`; their values were not printed or recorded here.
 
-Dependency remediation: direct `zod` changed `4.6.5 → 4.6.6`, direct `vite`
+Dependency remediation was a separately approved security-remediation phase in
+commit `7e6b3dd` (before the final documentation/security follow-up commit
+`2262f992`). Direct `zod` changed `4.6.5 → 4.6.6`, direct `vite`
 changed `8.3.0 → 8.3.3`, direct `vitest` changed `5.0.1 → 5.0.3`, and
 transitive `@vitest/mocker` resolved to `5.0.3`. The transitive
 `source-map-js` path through Vite/PostCSS is pinned via npm `overrides` to
-`1.2.2`. No major upgrade, application feature, `.env` or live provider call
-was introduced.
+`1.2.2`. The remediation was approved for the dependency-audit findings; no
+major upgrade, application feature, `.env` or live provider call was introduced.
+Commit `2262f992` did not change `package.json` or `package-lock.json`.
 
 ## 3. Architecture and data inventory
 
@@ -232,10 +236,10 @@ remote cancellation remains unobservable.
 
 ## 11. Final checkpoint
 
-- Final working tree: review changes in `server/securityEvents.ts`,
-  `server/server.ts`, `tests/agent.test.ts`, `e2e/game.spec.ts`,
-  `specs/specweek08/SPEC.md`, `specs/specweek08/TASKS.md` and this evidence
-  file; generated `dist/` is ignored.
+- Final branch/commit: `main@2262f9920fe1a32a96da29d911c78e6484589e36`;
+  `origin/main` matches this commit.
+- Final tracked working tree: clean at the committed checkpoint; the current
+  checkout has untracked `scripts/`, which is not part of this checkpoint.
 - Human sign-off: Jovana Grujić and Jelena Kantarević — reviewed and approved, 2026-10-25.
 - W08 complete decision: Technical validations pass; team contributions and
   human sign-off are recorded above.
